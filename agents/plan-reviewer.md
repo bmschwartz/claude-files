@@ -24,7 +24,7 @@ When invoked you will receive:
    ```
    agent --help 2>&1 | head -20
    ```
-   Verify that `--model`, `--print`, and `--workspace` appear in the help output. If any are missing, write an error report to the output file and stop: "agent CLI missing required flags: [list]. Run `agent --help` to verify your installation."
+   Verify that `--model`, `--print`, `--workspace`, `--mode`, and `--force` appear in the help output. If any are missing, write an error report to the output file and stop: "agent CLI missing required flags: [list]. Run `agent --help` to verify your installation."
 
 2. Read the review prompt from the provided file path.
 
@@ -42,14 +42,15 @@ When invoked you will receive:
    ```
    Followed by the contents of the review prompt file.
 
-5. Run the `agent` CLI, passing the prompt via stdin to avoid shell quoting issues:
+5. Run the `agent` CLI, using input redirection (not a pipe) to avoid premature stdin closure with backgrounded processes:
    ```
-   cat "<COMBINED_PROMPT>" | agent \
+   agent \
      --print \
      --model <MODEL> \
      --mode plan \
      --force \
      --workspace "<PROJECT_ROOT>" \
+     < "<COMBINED_PROMPT>" \
      > "<OUTPUT_DIR>/review-<MODEL>-<N>-<TIMESTAMP>.md" 2>&1 &
    AGENT_PID=$!
 

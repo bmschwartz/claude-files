@@ -97,6 +97,8 @@ Items from prior review rounds that were re-flagged but have already been resolv
 2. ...
 
 _(Omit this section entirely if this is the first review round)_
+
+**Deduplication criteria:** Match items by recommendation title **and** the specific file/section they affect. If a new recommendation has the same title and targets the same area as a previously-applied item, classify it as "Previously addressed." If the title is similar but the scope or rationale differs meaningfully, treat it as a new finding.
 ```
 
 7. Return a brief status report:

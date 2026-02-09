@@ -113,7 +113,7 @@ Execute a single git diff command based on arguments:
 - `git diff` for unstaged only
 - `git diff HEAD` for all changes
 
-**Including untracked files:** To capture new (untracked) files in the diff, run `git add -N <file>` (intent-to-add) for each untracked file first, then include them in the diff. Alternatively, for files not yet added, use `git diff --no-index /dev/null <file>` to generate a diff for each new file separately. Remove the intent-to-add entries afterward with `git reset <file>` so the staging area is unchanged.
+**Including untracked files:** For each new (untracked) file, use `git diff --no-index /dev/null <file>` to generate a diff without modifying the staging area. This is side-effect-free and safe if the process is interrupted.
 
 **For Default (Thorough) Mode:**
 
@@ -324,19 +324,9 @@ Throughout the review, provide educational insights:
 
 ## Spec Integration
 
-If reviewing changes from a `/new-feature` workflow:
-
-1. Check for feature documentation directories in `.claude/docs/[feature-name]/`
-2. Resolve the current plan version:
-   - **Versioned:** Read `PLAN.md`, extract the `Current version:` path, read documents from that subdirectory.
-   - **Legacy fallback:** If no `PLAN.md` exists, read documents directly from the feature directory.
-3. Read documentation files from the resolved path:
-   - `SPEC.md` - Verify implementation matches requirements
-   - `KEY_DECISIONS.md` - Verify design decisions were followed
-   - `CHECKLIST.md` - Check task completion status
-   - `FIXTURES.md` - Verify test data coverage
-4. Include detailed compliance status in output (see Section 7 format)
-5. Flag any deviations from the planned approach
+If reviewing changes from a `/new-feature` workflow, follow the procedure in **Step 0b** above to discover and resolve feature documentation. Then:
+1. Include detailed compliance status in output (see Section 7 format)
+2. Flag any deviations from the planned approach
 
 ---
 

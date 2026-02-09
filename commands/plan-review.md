@@ -154,6 +154,8 @@ Wait for all of them to complete before proceeding.
 - **Continue with the remaining successful reviews.** Do not abort the entire process because one model failed.
 - Pass the list of successful and failed reviews to Step 4 so the synthesizer knows what to work with.
 
+**Zero-success guard:** If ALL reviews failed, report the errors and stop. Do not proceed to Step 4. At least one successful review is required for synthesis.
+
 ---
 
 ## Step 4: Synthesize Reviews via Subagent

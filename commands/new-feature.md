@@ -121,7 +121,7 @@ Only if ambiguity remains after Rounds 1-2:
 
 **Launch Design Subagents:**
 
-Use `feature-dev:code-architect` or `Plan` agent to design the implementation:
+Use `feature-dev:code-architect` agent (deep codebase-aware blueprints) or `Plan` agent (lighter-weight strategy without deep code analysis) to design the implementation:
 
 **Input to Agent:**
 - Discovery findings from Phase 0
@@ -272,12 +272,12 @@ _(Only list documents that were actually created)_
 
 ## Discovery Summary
 
-### Phase 0: Codebase Exploration
+### Discovery: Codebase Exploration
 *Key findings from exploration:*
 - [Finding 1]
 - [Finding 2]
 
-### Phase 1: Requirements
+### Discovery: Requirements
 Q: [Question asked]
 A: [Answer provided]
 *Requirement: [What we learned]*
@@ -509,7 +509,7 @@ All agents below are **built-in Claude Code agent types** launched via the Task 
 |-------|-----------------|---------|
 | 0 | `Explore` | Quick pattern and file discovery |
 | 0 | `feature-dev:code-explorer` | Deep architecture tracing (complex features) |
-| 2 | `Plan` | Implementation strategy |
+| 2 | `Plan` | Lighter-weight implementation strategy (no deep code analysis) |
 | 2 | `feature-dev:code-architect` | Detailed architecture blueprints |
 | 7 | `/git-review` command | Comprehensive code review with interactive fixes |
 
