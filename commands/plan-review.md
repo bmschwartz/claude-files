@@ -1,5 +1,16 @@
 # Plan Review: Multi-Model Analysis & Synthesis
 
+> **v1.1.0** · Last updated 2026-02-09
+
+## Changelog
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.1.0 | 2026-02-09 | Timestamped review folders — each round gets its own `reviews/<TIMESTAMP>/` directory with prompt, raw reviews, and summary. Added `REVIEW.md` at plan root linking to most recent round. |
+| 1.0.0 | 2026-02-09 | Initial version — 8-step review process, plan-reviewer/review-synthesizer subagents, `--models`/`--count`/`--dry-run` flags, iterative review cycles with versioned plan snapshots |
+
+---
+
 Orchestrate a multi-model review of an implementation plan, then synthesize the results, gather user input, and update the plan documents.
 
 This process is iterative — the user may choose to run another review cycle after the plan is updated.
@@ -15,13 +26,14 @@ This process is iterative — the user may choose to run another review cycle af
 
 **Optional flags:**
 
-- `--models <comma-separated-list>` — Override the default review models. Example: `--models opus-4.6-thinking,gpt-5.2-codex-xhigh`
+- `--models <comma-separated-list>` — Override the default review models. Example: `--models opus-4.6-thinking,gpt-5.3-codex-high`
 - `--count <N>` — Number of `plan-reviewer` subagents to spawn per model. Default: `2`.
 - `--dry-run` — Show which documents would be reviewed, which models would be used, and how many subagents per model, without running any reviews. Useful for verifying setup before spending tokens.
 
 **Default models** (when `--models` is not specified):
+
 - `opus-4.6-thinking`
-- `gpt-5.2-codex-xhigh`
+- `gpt-5.3-codex-high`
 
 Parse `$ARGUMENTS` by splitting on whitespace. Extract any flags first, then treat the remaining positional tokens as project root and plan root. If fewer than two positional paths are provided, report an error and ask the user to provide both paths.
 
@@ -29,17 +41,36 @@ Parse `$ARGUMENTS` by splitting on whitespace. Extract any flags first, then tre
 
 ## Review Output Structure
 
-All review artifacts are stored in `<PLAN_ROOT>/reviews/`. The naming conventions below are shared between the `plan-reviewer` and `review-synthesizer` subagents:
+Each review round gets its own timestamped directory under `<PLAN_ROOT>/reviews/`. A `REVIEW.md` file at the plan root links to the most recent round.
+
+```
+<PLAN_ROOT>/
+├── PLAN.md                              # → current plan version
+├── REVIEW.md                            # → most recent review round
+├── plans/
+│   └── <PLAN_TIMESTAMP>/
+└── reviews/
+    ├── <ROUND_1_TIMESTAMP>/             # Round 1
+    │   ├── _review-prompt.md            # Prompt used (preserved)
+    │   ├── review-<MODEL>-<N>.md        # Raw review outputs
+    │   └── REVIEW_SUMMARY.md            # Synthesis for this round
+    └── <ROUND_2_TIMESTAMP>/             # Round 2
+        ├── _review-prompt.md
+        ├── review-<MODEL>-<N>.md
+        └── REVIEW_SUMMARY.md
+```
 
 | File | Purpose | Created by |
 |------|---------|------------|
-| `_review-prompt.md` | Prompt passed to each reviewer model | Step 2 (deleted in Step 8) |
-| `review-<MODEL>-<N>-<TIMESTAMP>.md` | Raw review output from a single subagent (immutable once written) | `plan-reviewer` subagent |
-| `REVIEW_SUMMARY.md` | Synthesized summary across all reviews (updated in Step 7 with apply/skip status) | `review-synthesizer` subagent |
+| `REVIEW.md` (plan root) | Links to the most recent review round's `REVIEW_SUMMARY.md` | Step 7 |
+| `reviews/<TIMESTAMP>/` | Timestamped directory for a single review round | Step 2 |
+| `reviews/<TIMESTAMP>/_review-prompt.md` | Prompt passed to each reviewer model (preserved as audit trail) | Step 2 |
+| `reviews/<TIMESTAMP>/review-<MODEL>-<N>.md` | Raw review output from a single subagent (immutable) | `plan-reviewer` subagent |
+| `reviews/<TIMESTAMP>/REVIEW_SUMMARY.md` | Synthesized summary for this round (updated in Step 7 with apply/skip status) | `review-synthesizer` subagent |
 
-`<MODEL>` is the model identifier with `/` replaced by `-` (e.g., `opus-4.6-thinking`). `<N>` is the 1-indexed instance number (e.g., `1`, `2`, `3`). `<TIMESTAMP>` uses `YYYYMMDD-HHMMSS` format and is shared across all reviews in a single run.
+`<MODEL>` is the model identifier with `/` replaced by `-` (e.g., `opus-4.6-thinking`). `<N>` is the 1-indexed instance number (e.g., `1`, `2`, `3`). `<TIMESTAMP>` uses `YYYYMMDD-HHMMSS` format and is shared across all files in a single round.
 
-**Immutability rule:** Raw `review-*-<TIMESTAMP>.md` files must never be modified after creation. `REVIEW_SUMMARY.md` is a living document that is updated with apply/skip status in Step 7.
+**Immutability rule:** Raw `review-<MODEL>-<N>.md` files must never be modified after creation. `REVIEW_SUMMARY.md` is updated with apply/skip status in Step 7 but raw review content is never changed.
 
 ---
 
@@ -49,7 +80,7 @@ All review artifacts are stored in `<PLAN_ROOT>/reviews/`. The naming convention
 2. Verify the project root directory exists.
 3. Verify the plan root directory exists and contains `PLAN.md`.
 4. Verify at least one versioned plan snapshot exists in `<PLAN_ROOT>/plans/`. If not, report an error: "No plan versions found. Run `/new-feature` first to create an initial plan."
-5. Read `PLAN.md` and extract the current plan version directory from the `Current version:` line (e.g., `Current version: \`plans/20260209-143022/\`` → the current version directory is `<PLAN_ROOT>/plans/20260209-143022/`). Verify this directory exists.
+5. Read `PLAN.md` and extract the current plan version directory from the `Current version:` line (e.g., `Current version: \`plans/20260209-143022/\``→ the current version directory is`<PLAN_ROOT>/plans/20260209-143022/`). Verify this directory exists.
 
 If any validation fails, report the error clearly and stop.
 
@@ -61,14 +92,14 @@ Read all files in the current plan version directory (the one `PLAN.md` links po
 
 The plan documents follow the `/new-feature` convention:
 
-| Document | Purpose |
-|----------|---------|
-| `SPEC.md` | Full specification — requirements, implementation phases, iteration log |
-| `README.md` | Navigation guide — document index, quick start, code reference pattern |
-| `KEY_DECISIONS.md` | Quick reference — design decisions, trade-offs, rationale |
-| `CHECKLIST.md` | Progress tracking — extracted tasks organized by phase |
-| `PR_STRATEGY.md` | PR planning — dependency graph, PR sequence, branch names |
-| `FIXTURES.md` | Test ground truth — pytest fixtures, sample data, assertions |
+| Document           | Purpose                                                                 |
+| ------------------ | ----------------------------------------------------------------------- |
+| `SPEC.md`          | Full specification — requirements, implementation phases, iteration log |
+| `README.md`        | Navigation guide — document index, quick start, code reference pattern  |
+| `KEY_DECISIONS.md` | Quick reference — design decisions, trade-offs, rationale               |
+| `CHECKLIST.md`     | Progress tracking — extracted tasks organized by phase                  |
+| `PR_STRATEGY.md`   | PR planning — dependency graph, PR sequence, branch names               |
+| `FIXTURES.md`      | Test ground truth — pytest fixtures, sample data, assertions            |
 
 Not all documents may be present. Work with whatever exists.
 
@@ -76,11 +107,13 @@ Not all documents may be present. Work with whatever exists.
 
 ---
 
-## Step 2: Write the Review Prompt
+## Step 2: Create Review Round & Write Prompt
 
-Create the reviews directory if it doesn't exist: `mkdir -p <PLAN_ROOT>/reviews/`
+Generate the review round timestamp: `REVIEW_TIMESTAMP=$(date +%Y%m%d-%H%M%S)`
 
-Write the following review prompt to `<PLAN_ROOT>/reviews/_review-prompt.md`. This file will be read by each `plan-reviewer` subagent and passed to the `agent` CLI.
+Create the round directory: `mkdir -p <PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/`
+
+Write the following review prompt to `<PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/_review-prompt.md`. This file will be read by each `plan-reviewer` subagent and passed to the `agent` CLI. It is preserved in the round directory as an audit trail.
 
 ```
 Review the implementation plan documents in this workspace. Read every file thoroughly before beginning your analysis.
@@ -124,9 +157,9 @@ Finish with a **Prioritized Recommendations** section: a numbered list of the mo
 
 ## Step 3: Run Model Reviews via Subagents
 
-Generate a single timestamp using `date +%Y%m%d-%H%M%S` and reuse it for all reviews in this run.
+Use the `REVIEW_TIMESTAMP` generated in Step 2 for all review files in this round.
 
-Use the models from `--models` if provided, otherwise the defaults: `opus-4.6-thinking`, `gpt-5.2-codex-xhigh`. Use the count from `--count` if provided, otherwise `2`.
+Use the models from `--models` if provided, otherwise the defaults: `opus-4.6-thinking`, `gpt-5.3-codex-high`. Use the count from `--count` if provided, otherwise `2`.
 
 For each model, use the **Task tool** to spawn `<COUNT>` `plan-reviewer` subagents **in the background** (e.g., 2 models × 2 count = 4 subagents). Each subagent receives a unique instance number `<N>` (1-indexed).
 
@@ -137,10 +170,10 @@ Run a plan review using the Cursor `agent` CLI with the following parameters:
 
 - Model: <MODEL>
 - Instance number: <N>
-- Review prompt file: <PLAN_ROOT>/reviews/_review-prompt.md (pass as the agent prompt)
+- Review prompt file: <PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/_review-prompt.md (pass as the agent prompt)
 - Plan directory: <CURRENT_PLAN_VERSION_DIR> (the agent should read all files here)
 - Project root: <PROJECT_ROOT> (pass as the working directory so the agent can access the codebase)
-- Write the review output to: <PLAN_ROOT>/reviews/review-<MODEL>-<N>-<TIMESTAMP>.md
+- Write the review output to: <PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/review-<MODEL>-<N>.md
 
 If the CLI fails, retry once. If it fails again, write a brief error report to the output file explaining what went wrong (exit code, stderr, etc.) so downstream steps can identify the failure.
 ```
@@ -149,7 +182,8 @@ Run all subagents in parallel. As each completes, report progress to the user: "
 
 Wait for all of them to complete before proceeding.
 
-**Error recovery:** After all subagents finish, verify that each expected review file (`review-<MODEL>-<N>-<TIMESTAMP>.md`) exists and is non-empty. For any that are missing or contain an error report:
+**Error recovery:** After all subagents finish, verify that each expected review file (`review-<MODEL>-<N>.md`) in `reviews/<REVIEW_TIMESTAMP>/` exists and is non-empty. For any that are missing or contain an error report:
+
 - Note the failure prominently in your output (which model failed, why if known).
 - **Continue with the remaining successful reviews.** Do not abort the entire process because one model failed.
 - Pass the list of successful and failed reviews to Step 4 so the synthesizer knows what to work with.
@@ -166,26 +200,26 @@ Use the **Task tool** to spawn a `review-synthesizer` subagent in the **foregrou
 Synthesize the plan reviews with the following parameters:
 - Plan root: <PLAN_ROOT>
 - Current plan version directory: <CURRENT_PLAN_VERSION_DIR>
-- Timestamp: <TIMESTAMP>
+- Review round directory: <PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/
 - Review files: <list of successful review file paths>
 - Failed reviews: <list of models that failed, if any>
 ```
 
 The subagent will:
+
 1. Read all successful review files from this run and the current plan version documents
 2. Cross-reference findings and categorize every recommendation with severity tags into: **Auto-apply**, **Needs your input**, or **Unique insights**
-3. Consult any prior `reviews/REVIEW_SUMMARY.md` to avoid re-surfacing already-addressed items
-4. Write `<PLAN_ROOT>/reviews/REVIEW_SUMMARY.md`
+3. Write `<PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/REVIEW_SUMMARY.md`
 5. Note any failed reviews at the top of the summary so the user is aware of reduced coverage
 6. Return a status report with item counts per bucket and severity breakdown
 
-Wait for the subagent to complete. Verify that `<PLAN_ROOT>/reviews/REVIEW_SUMMARY.md` exists.
+Wait for the subagent to complete. Verify that `<PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/REVIEW_SUMMARY.md` exists.
 
 ---
 
 ## Step 5: Present Summary & Gather Input
 
-Display the full contents of `<PLAN_ROOT>/reviews/REVIEW_SUMMARY.md` to the user.
+Display the full contents of `<PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/REVIEW_SUMMARY.md` to the user.
 
 **Auto-apply override:** Before applying changes, ask:
 
@@ -225,37 +259,56 @@ Create a new plan version:
    - **Unique insights** that were marked for auto-apply
 
 **Apply changes per-document.** For each plan document that needs modification:
-   1. State which document you are updating and what changes will be made
-   2. Apply the changes
-   3. Briefly summarize what was modified in that document
+
+1.  State which document you are updating and what changes will be made
+2.  Apply the changes
+3.  Briefly summarize what was modified in that document
 
 After all documents are updated:
+
 - Add a dated entry to the iteration log in `SPEC.md` (if it exists) noting the review round, models used, and summary of changes
 - Do NOT modify any files in prior plan version directories
 - Do NOT modify raw `review-*-<TIMESTAMP>.md` files
 
 5. Update `<PLAN_ROOT>/PLAN.md` — change all links to point to `plans/<NEW_VERSION_TIMESTAMP>/` and update the `Current version:` line.
+6. Create or update `<PLAN_ROOT>/REVIEW.md` — link to the current review round's summary (see Step 7 for the full template).
 
 ---
 
-## Step 7: Summarize Diffs
+## Step 7: Summarize Diffs & Update REVIEW.md
 
 Present a per-document summary of what changed between the previous plan version and the new one. For each modified document, show:
+
 - Document name
 - Number of changes applied
 - Brief description of each change
 
-Update `<PLAN_ROOT>/reviews/REVIEW_SUMMARY.md` to reflect what was actually applied (mark each item as applied or skipped with the user's rationale if provided).
+Update `<PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/REVIEW_SUMMARY.md` to reflect what was actually applied (mark each item as applied or skipped with the user's rationale if provided).
+
+Create or update `<PLAN_ROOT>/REVIEW.md` with the following structure:
+
+```markdown
+# [Feature Name] Reviews
+
+Current review: `reviews/<REVIEW_TIMESTAMP>/`
+
+## Review Rounds
+
+| Round | Date | Models | Plan version reviewed | Summary |
+|-------|------|--------|-----------------------|---------|
+| N | YYYY-MM-DD | <models used> (failures noted) | `plans/<PLAN_TIMESTAMP>/` | [REVIEW_SUMMARY.md](reviews/<REVIEW_TIMESTAMP>/REVIEW_SUMMARY.md) |
+| ... | ... | ... | ... | ... |
+```
+
+Newest round first. Each row links to that round's `REVIEW_SUMMARY.md`. This gives a quick overview of all review rounds with audit trail.
 
 ---
 
-## Step 8: Clean Up & Final Prompt
-
-Delete `<PLAN_ROOT>/reviews/_review-prompt.md` (no longer needed).
+## Step 8: Final Prompt
 
 Present the per-document diff summary, then ask the user:
 
 > "The plan has been updated (version `<NEW_VERSION_TIMESTAMP>`). Would you like to run another round of plan review, or are you happy with the plan?"
 
-- If the user wants **another round**: Summarize the current round in 3-5 bullet points. Re-read `PLAN.md` to discover the new current version path. Then go back to **Step 2** and repeat the entire process (new timestamp, fresh reviews against the now-updated plan version). Carry forward only the round summary, the updated `PLAN.md` path, and the new version timestamp — re-read plan documents fresh in Step 1.
+- If the user wants **another round**: Summarize the current round in 3-5 bullet points. Re-read `PLAN.md` to discover the new current version path. Then go back to **Step 2** and repeat the entire process (new review round timestamp, fresh reviews against the now-updated plan version). Carry forward only the round summary, the updated `PLAN.md` path, and the new plan version timestamp — re-read plan documents fresh in Step 1.
 - If the user is **satisfied**: confirm completion and end.

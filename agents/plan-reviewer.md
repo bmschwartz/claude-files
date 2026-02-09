@@ -10,7 +10,8 @@ maxTurns: 10
 You are a plan review executor. Your only job is to run the Cursor `agent` CLI tool against an implementation plan and save the output.
 
 When invoked you will receive:
-- A **model name** (e.g. `opus-4.6-thinking`, `gpt-5.2-codex-xhigh`)
+
+- A **model name** (e.g. `opus-4.6-thinking`, `gpt-5.2-codex-high`)
 - An **instance number** `<N>` (1-indexed) — identifies this subagent among multiple instances of the same model
 - A **plan directory path** — the versioned plan snapshot directory containing the actual plan documents
 - A **project root path** — the codebase root, so the reviewer can verify the plan against actual code
@@ -21,9 +22,11 @@ When invoked you will receive:
 ## Execution steps
 
 1. **Validate the CLI.** Before doing anything else, run:
+
    ```
    agent --help 2>&1 | head -20
    ```
+
    Verify that `--model`, `--print`, `--workspace`, `--mode`, and `--force` appear in the help output. If any are missing, write an error report to the output file and stop: "agent CLI missing required flags: [list]. Run `agent --help` to verify your installation."
 
 2. Read the review prompt from the provided file path.
@@ -31,18 +34,23 @@ When invoked you will receive:
 3. Ensure the output directory exists: `mkdir -p "<OUTPUT_DIR>"`
 
 4. Write a combined prompt file that prepends context to the review prompt:
+
    ```
    COMBINED_PROMPT="<OUTPUT_DIR>/_prompt-<MODEL>-<N>.md"
    ```
+
    The combined prompt should start with:
+
    ```
    The plan documents are located at: <PLAN_DIR>
    The project codebase is in this workspace.
    Read all plan documents first, then use the codebase to verify claims in the plan.
    ```
+
    Followed by the contents of the review prompt file.
 
 5. Run the `agent` CLI, using input redirection (not a pipe) to avoid premature stdin closure with backgrounded processes:
+
    ```
    agent \
      --print \
