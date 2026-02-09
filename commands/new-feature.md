@@ -23,9 +23,15 @@ The process leverages subagents and commands throughout:
 ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
 │ Phase 3:         │    │ Phase 4:         │    │ Phase 5:         │
 │ Risk             │ → │ Specification    │ → │ Spec Approval    │
-│ Assessment       │    │ Document         │    │                  │
+│ Assessment       │    │ Document         │    │ + Review Gate    │
 └──────────────────┘    └──────────────────┘    └──────────────────┘
-         │                                              │
+         │                                         │          │
+         ▼                                    ┌────┘    ┌─────┘
+┌──────────────────┐    ┌──────────────┐      │         │
+│ /plan-review     │ ◄──┤ User prompted├──────┘         │
+│ (optional)       │    │ to choose    │                │
+└────────┬─────────┘    └──────────────┘                │
+         │ (returns to approval)                        │
          ▼                                              ▼
 ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
 │ Phase 6:         │    │ Phase 7:         │    │ Phase 8:         │
@@ -367,15 +373,27 @@ After creating the specification:
    - "Created SPEC.md, README.md, KEY_DECISIONS.md, and CHECKLIST.md in `plans/<timestamp>/`"
    - "Skipped PR_STRATEGY.md (single PR) and FIXTURES.md (no new models)"
    - "Created PLAN.md at root with links to current version"
-3. **Remind user** they can run `/plan-review <project_root> .claude/docs/[feature-name]` to get a multi-model review of the plan before proceeding.
-4. **User reviews** the specification, starting with `PLAN.md` or `README.md`
-5. **User can:**
-   - Approve and proceed to implementation
+3. **User reviews** the specification, starting with `PLAN.md` or `README.md`
+4. **User can:**
    - Request changes to the specification
    - Add missing details or requirements
    - Adjust phasing or implementation approach
    - Request additional supporting documents
-   - Run `/plan-review` for multi-model analysis
+5. **Plan review gate** — Once the user is satisfied with the spec, use `AskUserQuestion` to prompt:
+
+   ```
+   AskUserQuestion:
+     question: "The spec is ready. Would you like to run /plan-review for multi-model analysis before implementation?"
+     header: "Plan review"
+     options:
+       - label: "Run plan review (Recommended)"
+         description: "Spawn /plan-review to get multi-model feedback on the plan. Catches issues before you invest in implementation."
+       - label: "Skip to implementation"
+         description: "Proceed directly to Phase 6. You can always run /plan-review later if needed."
+   ```
+
+   - If the user chooses **Run plan review**: Invoke `/plan-review <project_root> .claude/docs/[feature-name]`. After the review cycle completes (the user may run multiple review rounds), return here and re-prompt for approval.
+   - If the user chooses **Skip to implementation**: Proceed directly to Phase 6.
 6. **Once approved**, proceed to implementation
 
 ---
@@ -476,7 +494,7 @@ To use this process:
 
 4. Review architecture design and risk assessment
 
-5. Approve specification
+5. Approve specification (prompted to run `/plan-review` before implementation)
 
 6. Implementation proceeds with progress tracking
 
