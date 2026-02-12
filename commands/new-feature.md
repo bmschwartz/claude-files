@@ -437,19 +437,21 @@ As you implement, provide insights about:
 
 After implementation, run `/git-review` to perform a comprehensive code review.
 
-**What `/git-review` Does:**
+**What `/git-review` Does (v3.0.0 — Multi-Model Review):**
 1. **Explores codebase patterns** - Launches Explore agent to understand conventions
-2. **Deep code analysis** - Uses `feature-dev:code-reviewer` agent
-3. **Spec compliance check** - Validates against the feature spec created in Phase 4
-4. **Categorizes issues** - Critical, Important, and Suggestions
-5. **Interactive fix application** - Prompts to apply each fix (Apply/Skip)
+2. **Multi-model code analysis** - Launches the built-in Claude `feature-dev:code-reviewer` (richer prompt) PLUS external models via the `agent` CLI, all in parallel
+3. **Cross-model synthesis** - The `code-review-synthesizer` agent combines findings from all models, applies agreement analysis, and produces a structured `REVIEW_SUMMARY.md`
+4. **Spec compliance check** - All reviewers (including external models) receive the feature spec docs for validation
+5. **Severity categorization with agreement** - CRITICAL/IMPORTANT/MINOR/POTENTIAL, with cross-model agreement boosting confidence
+6. **Interactive fix application** - Prompts to apply each fix (Apply/Skip/Apply All/Skip All)
 
 **The review will automatically:**
-- Check for bugs, logic errors, and security vulnerabilities
+- Check for bugs, logic errors, and security vulnerabilities using multiple AI models
 - Verify adherence to project conventions discovered in Phase 0
-- Validate implementation against `.claude/docs/[feature-name]/` (reads `PLAN.md` to find the current plan version, then reads SPEC.md, KEY_DECISIONS.md, CHECKLIST.md from that version directory)
+- Validate implementation against `.claude/docs/[feature-name]/` (reads `PLAN.md` to find the current plan version, then reads SPEC.md, KEY_DECISIONS.md, CHECKLIST.md from that version directory) — spec docs are passed to ALL reviewers including external models
 - Verify test coverage using FIXTURES.md as reference
-- Offer to apply fixes interactively
+- Produce persistent review artifacts in `.claude/reviews/<branch>/<timestamp-scope>/`
+- Offer to apply fixes interactively, with agreement level shown per issue
 
 **After the review:**
 - Address any critical or important issues (via interactive prompts or manually)
@@ -529,25 +531,29 @@ All agents below are **built-in Claude Code agent types** launched via the Task 
 | 0 | `feature-dev:code-explorer` | Deep architecture tracing (complex features) |
 | 2 | `Plan` | Lighter-weight implementation strategy (no deep code analysis) |
 | 2 | `feature-dev:code-architect` | Detailed architecture blueprints |
-| 7 | `/git-review` command | Comprehensive code review with interactive fixes |
+| 7 | `/git-review` command | Multi-model code review with synthesis and interactive fixes |
 
 ---
 
 ## Integration with `/git-review`
 
-Phase 7 directly invokes `/git-review`, which provides:
+Phase 7 directly invokes `/git-review` (v3.0.0), which provides:
 
 - **Codebase exploration** via Explore agent
-- **Deep analysis** via `feature-dev:code-reviewer` agent
-- **Spec compliance checking** against `.claude/docs/[feature-name]/` directory (reads `PLAN.md` to resolve the current plan version, with legacy flat-layout fallback):
+- **Multi-model review** — built-in Claude `feature-dev:code-reviewer` (richer prompt with native codebase access) + external models via `agent` CLI (default: `opus-4.6-thinking` ×2, `gpt-5.3-codex-high` ×2), all running in parallel
+- **Cross-model synthesis** via `code-review-synthesizer` agent — deduplicates findings, applies agreement logic, categorizes by severity, produces structured output with file:line and code blocks
+- **Spec compliance checking** against `.claude/docs/[feature-name]/` directory (reads `PLAN.md` to resolve the current plan version, with legacy flat-layout fallback). All reviewers receive:
   - `SPEC.md` for requirements and implementation phases
   - `KEY_DECISIONS.md` for design choices to verify
   - `CHECKLIST.md` for task completion status
   - `FIXTURES.md` for test data validation
-- **Interactive fix application** with Apply/Skip prompts
+- **Persistent review artifacts** saved to `.claude/reviews/<branch>/<timestamp-scope>/` with raw review files, synthesized summary, and audit trail
+- **Interactive fix application** with Apply/Skip/Apply All/Skip All prompts (reads structured issues from `REVIEW_SUMMARY.md`)
 - **Educational insights** throughout the review
 
-This creates a seamless workflow where the feature documentation created in Phase 4 is automatically validated during code review in Phase 7.
+**Prerequisite:** Thorough mode (default) requires the `agent` CLI. If not available, use `--quick` for single-model review.
+
+This creates a seamless workflow where the feature documentation created in Phase 4 is automatically validated by multiple AI models during code review in Phase 7. The `code-review-synthesizer` is intentionally separate from the `review-synthesizer` used by `/plan-review` to allow independent evolution.
 
 ---
 

@@ -26,14 +26,13 @@ This process is iterative — the user may choose to run another review cycle af
 
 **Optional flags:**
 
-- `--models <comma-separated-list>` — Override the default review models. Example: `--models opus-4.6-thinking,gpt-5.3-codex-high`
+- `--models <comma-separated-list>` — Override the default review models. Example: `--models composer-1.5,opus-4.6-thinking`
 - `--count <N>` — Number of `plan-reviewer` subagents to spawn per model. Default: `2`.
 - `--dry-run` — Show which documents would be reviewed, which models would be used, and how many subagents per model, without running any reviews. Useful for verifying setup before spending tokens.
 
 **Default models** (when `--models` is not specified):
 
-- `opus-4.6-thinking`
-- `gpt-5.3-codex-high`
+- `composer-1.5`
 
 Parse `$ARGUMENTS` by splitting on whitespace. Extract any flags first, then treat the remaining positional tokens as project root and plan root. If fewer than two positional paths are provided, report an error and ask the user to provide both paths.
 
@@ -159,7 +158,7 @@ Finish with a **Prioritized Recommendations** section: a numbered list of the mo
 
 Use the `REVIEW_TIMESTAMP` generated in Step 2 for all review files in this round.
 
-Use the models from `--models` if provided, otherwise the defaults: `opus-4.6-thinking`, `gpt-5.3-codex-high`. Use the count from `--count` if provided, otherwise `2`.
+Use the models from `--models` if provided, otherwise the default: `composer-1.5`. Use the count from `--count` if provided, otherwise `2`.
 
 For each model, use the **Task tool** to spawn `<COUNT>` `plan-reviewer` subagents **in the background** (e.g., 2 models × 2 count = 4 subagents). Each subagent receives a unique instance number `<N>` (1-indexed).
 
