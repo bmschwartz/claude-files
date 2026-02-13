@@ -1,11 +1,12 @@
 # Plan Review: Multi-Model Analysis & Synthesis
 
-> **v1.1.0** · Last updated 2026-02-09
+> **v1.2.0** · Last updated 2026-02-13
 
 ## Changelog
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.2.0 | 2026-02-13 | Built-in Opus reviewers — `--count` Opus subagents always run via Task tool alongside external models. `agent` CLI no longer a hard prerequisite (only needed for external models). Step 3 split into 3a (built-in) + 3b (external) + 3c (collect). |
 | 1.1.0 | 2026-02-09 | Timestamped review folders — each round gets its own `reviews/<TIMESTAMP>/` directory with prompt, raw reviews, and summary. Added `REVIEW.md` at plan root linking to most recent round. |
 | 1.0.0 | 2026-02-09 | Initial version — 8-step review process, plan-reviewer/review-synthesizer subagents, `--models`/`--count`/`--dry-run` flags, iterative review cycles with versioned plan snapshots |
 
@@ -30,7 +31,11 @@ This process is iterative — the user may choose to run another review cycle af
 - `--count <N>` — Number of `plan-reviewer` subagents to spawn per model. Default: `2`.
 - `--dry-run` — Show which documents would be reviewed, which models would be used, and how many subagents per model, without running any reviews. Useful for verifying setup before spending tokens.
 
-**Default models** (when `--models` is not specified):
+**Built-in reviewers:**
+
+- `--count` Opus subagents always run via the Task tool (no `agent` CLI required). These have native codebase access and deep analysis capabilities.
+
+**Default external models** (when `--models` is not specified):
 
 - `composer-1.5`
 
@@ -67,7 +72,7 @@ Each review round gets its own timestamped directory under `<PLAN_ROOT>/reviews/
 | `reviews/<TIMESTAMP>/review-<MODEL>-<N>.md` | Raw review output from a single subagent (immutable) | `plan-reviewer` subagent |
 | `reviews/<TIMESTAMP>/REVIEW_SUMMARY.md` | Synthesized summary for this round (updated in Step 7 with apply/skip status) | `review-synthesizer` subagent |
 
-`<MODEL>` is the model identifier with `/` replaced by `-` (e.g., `opus-4.6-thinking`). `<N>` is the 1-indexed instance number (e.g., `1`, `2`, `3`). `<TIMESTAMP>` uses `YYYYMMDD-HHMMSS` format and is shared across all files in a single round.
+`<MODEL>` is the model identifier with `/` replaced by `-` (e.g., `opus-4.6-thinking`). Built-in Opus reviewers use the model identifier `opus-internal`. `<N>` is the 1-indexed instance number (e.g., `1`, `2`, `3`). `<TIMESTAMP>` uses `YYYYMMDD-HHMMSS` format and is shared across all files in a single round.
 
 **Immutability rule:** Raw `review-<MODEL>-<N>.md` files must never be modified after creation. `REVIEW_SUMMARY.md` is updated with apply/skip status in Step 7 but raw review content is never changed.
 
@@ -75,7 +80,7 @@ Each review round gets its own timestamped directory under `<PLAN_ROOT>/reviews/
 
 ## Step 0: Validate Inputs
 
-1. **Prerequisite check:** Verify the `agent` CLI is installed by running `which agent`. If not found, report the error: "The `agent` CLI is required but not found on PATH. Install it from https://docs.cursor.com/agent and try again." Stop.
+1. **Prerequisite check:** Verify the `agent` CLI is installed by running `which agent`. If not found, warn: "The `agent` CLI is not found on PATH — external model reviews will be skipped. Only built-in Opus reviewers will run. Install the CLI from https://docs.cursor.com/agent for multi-model coverage." Set a flag to skip external models in Step 3.
 2. Verify the project root directory exists.
 3. Verify the plan root directory exists and contains `PLAN.md`.
 4. Verify at least one versioned plan snapshot exists in `<PLAN_ROOT>/plans/`. If not, report an error: "No plan versions found. Run `/new-feature` first to create an initial plan."
@@ -102,7 +107,7 @@ The plan documents follow the `/new-feature` convention:
 
 Not all documents may be present. Work with whatever exists.
 
-**If `--dry-run` was specified:** Display the list of discovered documents, the models that would be used for review, and how many subagents per model, then stop. Do not proceed to Step 2.
+**If `--dry-run` was specified:** Display the list of discovered documents, the number of built-in Opus reviewers, the external models that would be used, and how many subagents per model, then stop. Do not proceed to Step 2.
 
 ---
 
@@ -154,15 +159,36 @@ Finish with a **Prioritized Recommendations** section: a numbered list of the mo
 
 ---
 
-## Step 3: Run Model Reviews via Subagents
+## Step 3: Run Reviews
 
-Use the `REVIEW_TIMESTAMP` generated in Step 2 for all review files in this round.
+Use the `REVIEW_TIMESTAMP` generated in Step 2 for all review files in this round. Use the count from `--count` if provided, otherwise `2`.
 
-Use the models from `--models` if provided, otherwise the default: `composer-1.5`. Use the count from `--count` if provided, otherwise `2`.
+Launch **both** built-in Opus reviewers and external model reviewers in parallel. All subagents run concurrently in a single batch.
 
-For each model, use the **Task tool** to spawn `<COUNT>` `plan-reviewer` subagents **in the background** (e.g., 2 models × 2 count = 4 subagents). Each subagent receives a unique instance number `<N>` (1-indexed).
+### 3a: Built-in Opus Reviewers (always run)
 
-Task for each subagent:
+Launch `<COUNT>` Task tool subagents **in the background** with `model: opus`. These always run regardless of whether the `agent` CLI is available.
+
+Task for each built-in subagent:
+
+```
+You are a plan reviewer. Your job is to thoroughly review an implementation plan.
+
+1. Read the review prompt at <PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/_review-prompt.md and follow its instructions exactly.
+2. Read all plan documents in <CURRENT_PLAN_VERSION_DIR>/.
+3. The project codebase is at <PROJECT_ROOT> — use it to verify file paths, APIs, and patterns referenced in the plan.
+4. Write your complete review to: <PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/review-opus-internal-<N>.md
+```
+
+### 3b: External Model Reviewers (when agent CLI available)
+
+**Skip this subsection** if the `agent` CLI was not found in Step 0.
+
+Use the models from `--models` if provided, otherwise the default: `composer-1.5`.
+
+For each external model, use the **Task tool** to spawn `<COUNT>` `plan-reviewer` subagents **in the background**. Each subagent receives a unique instance number `<N>` (1-indexed).
+
+Task for each external subagent:
 
 ```
 Run a plan review using the Cursor `agent` CLI with the following parameters:
@@ -177,11 +203,13 @@ Run a plan review using the Cursor `agent` CLI with the following parameters:
 If the CLI fails, retry once. If it fails again, write a brief error report to the output file explaining what went wrong (exit code, stderr, etc.) so downstream steps can identify the failure.
 ```
 
-Run all subagents in parallel. As each completes, report progress to the user: "Review complete: `<MODEL>` instance `<N>` (`M` of `TOTAL` remaining)".
+### 3c: Wait and Collect
+
+Run all subagents (3a + 3b) in parallel. As each completes, report progress to the user: "Review complete: `<MODEL>` instance `<N>` (`M` of `TOTAL` remaining)".
 
 Wait for all of them to complete before proceeding.
 
-**Error recovery:** After all subagents finish, verify that each expected review file (`review-<MODEL>-<N>.md`) in `reviews/<REVIEW_TIMESTAMP>/` exists and is non-empty. For any that are missing or contain an error report:
+**Error recovery:** After all subagents finish, verify that each expected review file in `reviews/<REVIEW_TIMESTAMP>/` exists and is non-empty. For any that are missing or contain an error report:
 
 - Note the failure prominently in your output (which model failed, why if known).
 - **Continue with the remaining successful reviews.** Do not abort the entire process because one model failed.
