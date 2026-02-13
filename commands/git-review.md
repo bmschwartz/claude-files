@@ -471,7 +471,9 @@ Launch `<COUNT>` (default 1) `feature-dev:code-reviewer` agents (`model: "opus"`
 - Feature spec docs (if available) — SPEC.md, KEY_DECISIONS.md, CHECKLIST.md, FIXTURES.md
 - PR metadata (if `--pr` mode)
 - **Confidence threshold instruction:** "Only report issues with HIGH confidence. Pattern violations against the codebase patterns below carry extra weight. If you are uncertain about an issue, tag it separately as a 'Potential Issue' rather than mixing it with confirmed findings."
-- **Output instruction:** "Write your complete review to `${ROUND_DIR}/review-claude-code-<N>.md`."
+- **Output instruction:** "Return your complete review as your final message in markdown format. Do NOT attempt to write files — you do not have Write tool access."
+
+**IMPORTANT — File writing:** The `feature-dev:code-reviewer` agent does NOT have the `Write` tool. After each agent completes, the **parent orchestrator** must capture the agent's returned output and write it to `${ROUND_DIR}/review-claude-code-<N>.md` using the Write tool. Do not ask the agent to write the file itself.
 
 These reviewers benefit from native Claude Code codebase access — they can read files, explore the project, and use all built-in tools beyond what the diff shows.
 
@@ -510,7 +512,9 @@ If the CLI fails, retry once. If it fails again, write a brief error report to t
 
 Wait for all reviewers to complete before proceeding.
 
-**Error recovery:** After all reviewers finish, verify each expected review file exists and is non-empty. For any that are missing or contain an error report:
+**Writing review files (internal reviewers):** After each `feature-dev:code-reviewer` agent completes, read its returned output from the Task tool result. If the output contains a substantive review (not empty or an error), write it to `${ROUND_DIR}/review-claude-code-<N>.md` using the Write tool. If the agent returned empty or errored output, note the failure.
+
+**Error recovery:** After all reviewers finish and their outputs have been written, verify each expected review file exists and is non-empty. For any that are missing or contain an error report:
 
 - Note the failure prominently in your output (which model/instance failed, why if known).
 - **Continue with the remaining successful reviews.** Do not abort because one reviewer failed.
@@ -887,7 +891,9 @@ If reviewing changes from a `/new-feature` workflow, follow the procedure in **S
    - **Launch all reviewers in parallel** (Step 2f):
      - N× `feature-dev:code-reviewer` (Claude, background, default count: 1)
      - If `--external`: N× `code-review-executor` per external model (background)
-   - Wait for all reviewers, verify outputs, handle failures
+   - Wait for all reviewers to complete
+   - **Write internal review files:** For each `feature-dev:code-reviewer` agent, capture its returned output and write it to `${ROUND_DIR}/review-claude-code-<N>.md` (the agent cannot write files itself)
+   - Verify outputs, handle failures
    - **Launch synthesizer** (Step 2g): `code-review-synthesizer` (foreground)
    - Update `.claude/reviews/REVIEW.md` with round link
 6. **Output**: Show complete review with all sections (0 through 13)
