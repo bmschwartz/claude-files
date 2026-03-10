@@ -52,6 +52,8 @@ A comprehensive code review command that uses built-in Claude `feature-dev:code-
 
 **Default external models** (when `--external` is set and `--models` is not specified):
 
+- `gemini-3.1-pro`
+- `gpt-5.3-codex-high`
 - `composer-1.5`
 
 ### Persistence Options

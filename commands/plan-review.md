@@ -1,11 +1,12 @@
 # Plan Review: Multi-Model Analysis & Synthesis
 
-> **v1.2.0** · Last updated 2026-02-13
+> **v1.3.0** · Last updated 2026-03-04
 
 ## Changelog
 
 | Version | Date | Changes |
 |---------|------|---------|
+|| 1.3.0 | 2026-03-04 | Strengthened reviewer prompt — added TDD verification, spec-claim codebase verification, LLM prompt effectiveness dimension, edge case combination testing. Dimensions expanded from 6 to 8. |
 | 1.2.0 | 2026-02-13 | Built-in Opus reviewers — `--count` Opus subagents always run via Task tool alongside external models. `agent` CLI no longer a hard prerequisite (only needed for external models). Step 3 split into 3a (built-in) + 3b (external) + 3c (collect). |
 | 1.1.0 | 2026-02-09 | Timestamped review folders — each round gets its own `reviews/<TIMESTAMP>/` directory with prompt, raw reviews, and summary. Added `REVIEW.md` at plan root linking to most recent round. |
 | 1.0.0 | 2026-02-09 | Initial version — 8-step review process, plan-reviewer/review-synthesizer subagents, `--models`/`--count`/`--dry-run` flags, iterative review cycles with versioned plan snapshots |
@@ -38,6 +39,8 @@ This process is iterative — the user may choose to run another review cycle af
 **Default external models** (when `--models` is not specified):
 
 - `composer-1.5`
+- `gpt-5.3-codex-high`
+- `gemini-3.1-pro`
 
 Parse `$ARGUMENTS` by splitting on whitespace. Extract any flags first, then treat the remaining positional tokens as project root and plan root. If fewer than two positional paths are provided, report an error and ask the user to provide both paths.
 
@@ -134,20 +137,74 @@ The plan documents follow these conventions:
 
 Not all documents may be present. Evaluate what exists.
 
-You also have access to the actual project codebase. Use it to verify that:
-- Referenced file paths, modules, and APIs actually exist
-- Proposed architectural patterns are consistent with the existing codebase
-- Dependencies and integration points are accurately described
-- Test strategies align with existing test patterns
+## Codebase Verification (CRITICAL)
+
+You have access to the actual project codebase. **Actively verify every claim the plan makes about the codebase.** Do not take the plan's word for it. Specifically:
+
+- **File paths & line numbers:** Open each referenced file and verify the code at the cited lines matches what the plan describes. Flag any stale or incorrect line references.
+- **Function signatures & APIs:** Verify that referenced functions, classes, and methods exist with the signatures the plan assumes. Check parameter names, types, and return types.
+- **Existing patterns & conventions:** Read the actual code to confirm the plan's claims about architectural patterns, naming conventions, and module organization. Flag any mischaracterizations.
+- **Import paths:** Verify that proposed import changes reference the correct module paths and that claimed "single call site" assertions are actually true (search the codebase).
+- **Test patterns:** Verify that proposed test approaches match the project's existing test infrastructure (fixtures, mocking patterns, async handling, test file naming).
+
+## Evaluation Dimensions
 
 Evaluate the plan on the following dimensions:
 
-1. **Completeness** - Are there missing steps, unhandled edge cases, or gaps in the flow?
-2. **Correctness** - Are there logical errors, wrong assumptions, or misuse of APIs/libraries? Do referenced code paths actually exist?
-3. **Architecture** - Is the design sound? Are there better patterns or abstractions? Does it align with existing codebase conventions?
-4. **Dependencies & Ordering** - Are tasks sequenced correctly? Are external dependencies identified?
-5. **Risk** - What are the riskiest parts? What could block or derail implementation?
-6. **Scalability & Performance** - Will this hold up under load? Any obvious bottlenecks?
+### 1. Completeness
+Are there missing steps, unhandled edge cases, or gaps in the flow?
+
+**Pay special attention to:**
+- Input combination coverage: For functions with multiple optional parameters, does the plan test all meaningful combinations? (e.g., if a function takes `trigger` and `intent`, are all combinations of present/absent/specific-values covered?)
+- Edge cases at boundaries: What happens with unexpected inputs, None values, or enum values the plan doesn't mention?
+- Downstream effects: If the plan changes a function's output, are all consumers of that output accounted for?
+
+### 2. Correctness
+Are there logical errors, wrong assumptions, or misuse of APIs/libraries? Do referenced code paths actually exist?
+
+**Pay special attention to:**
+- Control flow: Does the plan correctly describe what happens at each branch point? Read the actual code to verify.
+- Short-circuit paths: If the codebase has early-return conditions (e.g., returning before reaching modified code), does the plan account for them?
+- Dead code: Would any proposed tests or changes be unreachable due to upstream short-circuits?
+
+### 3. Architecture
+Is the design sound? Are there better patterns or abstractions? Does it align with existing codebase conventions?
+
+**Pay special attention to:**
+- Pattern consistency: If the codebase has an established pattern for the type of change being made (e.g., a Strategy pattern, a factory function), does the plan follow it or deviate? If it deviates, is the deviation justified?
+- Module boundaries: Does the plan put logic in the right modules, or does it leak responsibilities across boundaries?
+- Single Responsibility: Does each proposed change have a clear, singular purpose?
+
+### 4. TDD Structure
+If the plan uses test-driven development (TDD-structured implementation phases with "Tests to Write First"):
+
+- Are the proposed tests specific enough to fail meaningfully? Would they catch real bugs, or are they tautological?
+- Do tests validate behavior (what the code does) rather than implementation (how it does it)?
+- Is test coverage sufficient? Are there behaviors described in the spec that have no corresponding test?
+- Are test descriptions clear enough to implement without ambiguity?
+
+### 5. Dependencies & Ordering
+Are tasks sequenced correctly? Are external dependencies identified?
+
+### 6. Risk
+What are the riskiest parts? What could block or derail implementation?
+
+**Pay special attention to:**
+- Regression risk: Could the proposed changes break existing behavior? Are there callers or consumers that the plan doesn't account for?
+- Prompt/LLM behavior risk: If the plan modifies LLM prompts, consider whether the new prompt language will actually achieve the desired behavior. LLMs may interpret prompt changes differently than intended. Flag any prompt changes where the effect is ambiguous or could backfire.
+
+### 7. LLM Prompt Effectiveness (when applicable)
+If the plan modifies LLM system prompts or user prompts:
+
+- Will the new prompt language reliably produce the intended behavior? Consider how LLMs prioritize system vs. user prompts, explicit vs. implicit instructions, and competing directives.
+- Are there conflicting instructions between system prompts and user prompts that could confuse the model?
+- Does the plan address ALL locations where relevant prompt text exists? (e.g., if fixing a "recency over intent" issue in one prompt, check whether the same issue exists in related prompts.)
+- Are prompt changes tested? If not, flag the gap — prompt regressions are hard to detect without behavioral tests.
+
+### 8. Scalability & Performance
+Will this hold up under load? Any obvious bottlenecks?
+
+## Output Format
 
 For each dimension:
 - Give a severity-tagged rating: CRITICAL / IMPORTANT / MINOR / GOOD
@@ -184,7 +241,7 @@ You are a plan reviewer. Your job is to thoroughly review an implementation plan
 
 **Skip this subsection** if the `agent` CLI was not found in Step 0.
 
-Use the models from `--models` if provided, otherwise the default: `composer-1.5`.
+Use the models from `--models` if provided, otherwise the default: `composer-1.5,gpt-5.3-codex-high,gemini-3.1-pro`.
 
 For each external model, use the **Task tool** to spawn `<COUNT>` `plan-reviewer` subagents **in the background**. Each subagent receives a unique instance number `<N>` (1-indexed).
 
