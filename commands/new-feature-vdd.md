@@ -382,7 +382,7 @@ AskUserQuestion:
 
 **Purpose:** Build the feature using phase-gated TDD. Every line of code must be demanded by a failing test.
 
-**Before starting, check for multi-PR strategy:** If `PR_STRATEGY.md` exists (generated in Phase 2c), read it. `PR_STRATEGY.md` must explicitly group which Implementation Phases belong to each PR and specify branch names using the convention `feat/<slug>--<slice>` (e.g., `feat/user-search--api`, `feat/user-search--ui`). Execute Phases 3 and 4 sequentially for each PR defined in the strategy. Track the current PR in CHECKPOINT.md's Notes field (e.g., "PR 2 of 3: feat/user-search--ui"). If no `PR_STRATEGY.md` exists, proceed with a single branch as below.
+**Before starting, check for multi-PR strategy:** If `PR_STRATEGY.md` exists (generated in Phase 2c), read it. `PR_STRATEGY.md` must explicitly group which Implementation Phases belong to each PR and specify branch names using the convention `feat/<slug>--<slice>` (e.g., `feat/user-search--api`, `feat/user-search--ui`). Execute Phases 3, 4, and the **PR Handoff Gate** sequentially for each PR defined in the strategy. Track the current PR in CHECKPOINT.md's Notes field (e.g., "PR 2 of 3: feat/user-search--ui"). The PR Handoff Gate (see section after Phase 4) pauses after each PR converges so the developer can review and modify it before the next PR begins. If no `PR_STRATEGY.md` exists, proceed with a single branch as below.
 
 **Update state tracking:**
 - **Create a feature branch:**
@@ -449,7 +449,7 @@ Clean up the implementation:
 
 Re-run the full test suite after refactoring.
 
-**Anti-slop self-check:** Before marking this phase complete, scan for: generic error messages, placeholder comments (TODO/FIXME/HACK), over-broad exception handling, magic numbers, dead code, unnecessary abstractions, copy-pasted blocks, extraneous docstrings (restating function names or obvious parameters), and comments that restate what code already says. Fix any found. This is not adversarial review — it's basic hygiene to prevent slop from compounding across phases.
+**Anti-slop self-check:** Before marking this phase complete, scan for: generic error messages, placeholder comments (TODO/FIXME/HACK), over-broad exception handling, magic numbers, dead code, unnecessary abstractions, copy-pasted blocks, extraneous docstrings (restating function names or obvious parameters), comments that restate what code already says, and **development artifact comments** — any comment or docstring referencing plan phases, micro-cycles, spec details, the development process, or review findings (e.g., "Phase 1:", "Micro-cycle 2:", "Per the spec...", "Added during convergence", "Fixed per review feedback"). These are process artifacts, not documentation. Fix any found. This is not adversarial review — it's basic hygiene to prevent slop from compounding across phases.
 
 **Test DRY check:** Before marking this phase complete, scan all tests written in this phase for repeated setup patterns. If 3+ tests share identical mock/fixture construction, extract a shared fixture. If tests differ only in input values and expected outputs, consolidate with `@pytest.mark.parametrize` (or language equivalent). This prevents test bloat from compounding across phases.
 
@@ -537,6 +537,7 @@ This launches the full review pipeline:
 - **Test DRY violations:** Flag test suites where 3+ tests share identical setup/mock construction but aren't using shared fixtures or parameterization. Flag tests that differ only in input values — these are candidates for `@pytest.mark.parametrize`.
 - **Test necessity audit:** For each test, ask: "If this test were deleted, what production failure would go undetected?" Tests where the answer is "none" or "extremely unlikely" should be flagged as LOW-impact candidates for consolidation or removal. Prefer parameterized tests over many nearly-identical individual tests.
 - **Documentation slop:** Flag docstrings that restate function names or obvious parameter types, comments that restate what code already says (e.g., `# increment counter` before `counter += 1`), and documentation overly specific to the current feature that will become stale. Docstrings are warranted for public APIs and non-obvious behavior — not for every function.
+- **Development artifact comments:** Flag any comment or docstring that references the plan, spec, implementation phases, micro-cycles, convergence, or the development process. These are process artifacts that should have been caught in Phase 3e's anti-slop check — their presence here is a MINOR finding but should be fixed.
 
 The review automatically discovers spec docs by reading `PLAN.md` in `.claude/docs/[feature-name]/` to locate the current versioned plan snapshot, then passes the discovered spec docs (SPEC.md, CHECKLIST.md, and KEY_DECISIONS.md if it exists) to reviewers for spec compliance checking.
 
@@ -593,15 +594,67 @@ AskUserQuestion:
 
 ---
 
+## PR Handoff Gate (Multi-PR Only)
+
+**Purpose:** Ensure the developer reviews and approves each PR before work begins on the next one. Prevents cascading branch changes when modifications to PR N require propagation to PR N+1.
+
+**Triggered:** After Phase 4 converges (or the developer accepts remaining issues) for a PR that is **not the last PR** in `PR_STRATEGY.md`. If this is the last PR, skip this gate and proceed directly to Phase 5.
+
+### Automated Cleanup
+
+Run `/deslop-around:deslop-around apply` first (mechanical sweep: console.log, TODO, commented-out code, debug imports, etc.), then run `/polish` (semantic sweep: development artifact comments, low-value docstrings, test audit). Both operate on the current PR's branch diff and commit their changes independently. This two-pass approach produces clean, review-ready code before presenting the PR to the developer.
+
+### Developer Review Gate
+
+```
+AskUserQuestion:
+  question: "PR [N] of [M] ([branch-name]) is ready for your review. `/deslop-around:deslop-around` + `/polish` cleanup has been applied. Review the branch, then choose how to proceed."
+  header: "PR Handoff"
+  options:
+    - label: "PR is good — continue to next PR"
+      description: "Start PR [N+1] on the next branch."
+    - label: "I made changes to this PR"
+      description: "I've pushed changes to this branch. Incorporate them before continuing."
+    - label: "Shelve remaining PRs"
+      description: "Stop here. Remaining PRs will not be started."
+```
+
+### Option Handling
+
+**"PR is good — continue to next PR":**
+1. Update CHECKPOINT.md Notes to reflect moving to the next PR (e.g., "PR 2 of 3: feat/user-search--ui")
+2. Determine the base for the next PR's branch from `PR_STRATEGY.md`:
+   - If the next PR depends on the current PR → `git checkout -b <next-branch> <current-branch>` (stacked)
+   - If the next PR is independent → `git checkout -b <next-branch> main` (or the project's default branch)
+3. Return to Phase 3 for the next PR's implementation phases
+
+**"I made changes to this PR":**
+1. Fetch the latest state of the current branch: `git pull --rebase origin <current-branch>` (or detect local changes if not yet pushed)
+2. If the next PR's branch already exists and was branched off the current PR, rebase it: `git checkout <next-branch> && git rebase <current-branch>`. If conflicts arise, present them to the developer
+3. Run `/git-review --quick` on the current branch as a sanity check on the developer's changes. If CRITICAL findings appear, flag them but do not re-enter the full convergence loop — the developer owns this PR now
+4. Re-prompt this gate (the developer may have more changes, or may now approve)
+
+**"Shelve remaining PRs":**
+1. Update CHECKPOINT.md: Status: `shelved`, Notes: "PR [N] of [M] completed. PRs [N+1]-[M] not started."
+2. Replace the active CLAUDE.md breadcrumb with the shelved variant
+3. Present a summary of what was completed and what remains
+4. Stop orchestration
+
+---
+
 ## Phase 5: Completion
 
 **Purpose:** Final validation and handoff.
 
-### 5a: Final Test Run
+### 5a: Cleanup Pass
+
+Run `/deslop-around:deslop-around apply` (mechanical sweep) followed by `/polish` (semantic sweep) on the current branch diff. This ensures the final code is clean before completion. In multi-PR mode, both already ran at each PR Handoff Gate — run them again here only if post-convergence changes were made (Phase 5d edits, final cleanups, etc.). If no changes were made since the last cleanup run, skip.
+
+### 5b: Final Test Run
 
 Run the complete test suite one last time. All tests must pass.
 
-### 5b: Final Checklist
+### 5c: Final Checklist
 
 - [ ] All success criteria from SPEC.md checked
 - [ ] All tests passing
@@ -609,11 +662,11 @@ Run the complete test suite one last time. All tests must pass.
 - [ ] SPEC.md iteration log reflects final state
 - [ ] CHECKLIST.md fully checked off
 
-### 5c: Quick Final Check (conditional)
+### 5d: Quick Final Check (conditional)
 
-If Phase 4 ran and any code changes were made after the last `/git-review` pass (e.g., minor cleanups, documentation, refactoring during 5a/5b), run `/git-review --quick` for a final sanity check. To detect: check if you made any commits or edits after the last Phase 4 review. If uncertain, run the quick check — the cost is low. If CRITICAL findings are discovered, run a full `/git-review --external` (thorough) and return to Phase 4a to resume the convergence loop (increment Convergence Iteration by 1 on re-entry from 5c). If no CRITICAL findings, proceed to 5d.
+If Phase 4 ran and any code changes were made after the last `/git-review` pass (e.g., minor cleanups, `/polish` changes, refactoring during 5a/5b), run `/git-review --quick` for a final sanity check. To detect: check if you made any commits or edits after the last Phase 4 review. If uncertain, run the quick check — the cost is low. If CRITICAL findings are discovered, run a full `/git-review --external` (thorough) and return to Phase 4a to resume the convergence loop (increment Convergence Iteration by 1 on re-entry from 5d). If no CRITICAL findings, proceed to 5e.
 
-### 5d: Summary
+### 5e: Summary
 
 Present to the developer:
 - **What was built** — feature summary
@@ -701,7 +754,9 @@ AskUserQuestion:
 | 2d | `/plan-review` command (optional) | Multi-model spec review |
 | 2d, 3, 4c | `TaskCreate` / `TaskUpdate` / `TaskList` | Create phase tasks at approval gate, track implementation, adjust during convergence |
 | 4 | `/git-review --external` (thorough) | Adversarial code review + convergence re-reviews |
-| 5c | `/git-review --quick` (conditional) | Post-convergence sanity check only — never used for convergence evidence |
+| PR Handoff | `/deslop-around:deslop-around apply` → `/polish` | Mechanical sweep then semantic sweep before developer reviews each PR (multi-PR only) |
+| 5a | `/deslop-around:deslop-around apply` → `/polish` | Mechanical sweep then semantic sweep before completion (single-PR or final PR) |
+| 5d | `/git-review --quick` (conditional) | Post-convergence sanity check only — never used for convergence evidence |
 
 ---
 
@@ -716,5 +771,6 @@ If tools are unavailable:
 - **`Explore` or `feature-dev:code-explorer` unavailable** → Use a `general-purpose` subagent with a prompt describing the same objectives (pattern discovery, architecture context, execution path tracing). The exploration quality may be lower but the workflow continues.
 - **`feature-dev:code-architect` unavailable** → Use a `Plan` subagent with the same inputs (exploration findings + requirements). `Plan` is lighter but sufficient for most features.
 - **`/plan-review` unavailable** → Skip multi-model spec review. The user reviews the spec manually at the Phase 2d gate. Proceed on user approval.
+- **`/polish` unavailable** → Perform the cleanup inline: scan for development artifact comments (plan references, micro-cycle mentions, process notes) and low-value docstrings, remove them, then categorize tests as HIGH/MEDIUM/LOW and remove LOW-value tests. This is a degraded version of `/polish` but covers the critical patterns. Commit the cleanup before presenting the PR Handoff Gate.
 - **`/git-review` unavailable** → Launch a fresh `Explore` or `general-purpose` subagent with an adversarial review prompt: provide the diff and SPEC.md, instruct it to flag issues using the same severity-tagged format as REVIEW_SUMMARY.md (issue title, severity, file:line, current code, suggested fix). Resolve the current branch via `git rev-parse --abbrev-ref HEAD` and **sanitize the branch name** for the path (replace `/` with `--` and strip invalid filesystem characters, matching git-review's convention). Write the subagent's output to `.claude/reviews/<sanitized-branch>/fallback-<YYYYMMDD-HHMMSS>/REVIEW_SUMMARY.md` and update `.claude/reviews/REVIEW.md` to point to this fallback directory using the same table structure as `/git-review`: add a row to the Review Rounds table with columns `| Round | Date | Branch | Scope | Models | Failures | Summary |` and a relative link `[REVIEW_SUMMARY.md](<sanitized-branch>/fallback-<timestamp>/REVIEW_SUMMARY.md)`. If `REVIEW.md` doesn't exist, create it with the table header and this row. **After writing the fallback REVIEW_SUMMARY.md**, present each finding to the developer interactively (Apply/Skip) — matching the standard `/git-review` flow — and update each finding's status in the file to `Applied` or `Skipped`. This ensures 4b's triage can operate consistently regardless of whether `/git-review` or the fallback produced the review. Do NOT review in the main context — this would violate the fresh-context principle. The convergence loop still applies.
 - **`agent` CLI unavailable** → `/git-review --external` requires the `agent` CLI. If it fails, rerun `/git-review` without `--external` (built-in Claude reviewers only). Note the downgrade in CHECKPOINT.md Notes field. The convergence loop still applies, just with single-model review instead of multi-model.
