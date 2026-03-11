@@ -1,6 +1,6 @@
 # Feature Development with TDD + Adversarial Convergence
 
-> **v2.1.0** · Adds autonomy modes (tied to tiers), structured RETROSPECTIVE.md, cross-feature retrospective inheritance. Cherry-picked from PR #1.
+> **v2.2.0** · Adds Light tier guardrail, hard gate on Suggested Rules, restored 3e self-check, expanded Phase 4 convergence semantics. Based on v1↔v2 review feedback.
 
 ## Overview
 
@@ -9,6 +9,8 @@ Orchestrates feature development: **explore → spec → test-first → adversar
 ### Feature Tiers
 
 Determine tier at the start. When ambiguous, start Light and escalate if complexity emerges.
+
+> **Light tier guardrail:** Features touching auth, persistence/schema, external APIs, or security boundaries may NOT be classified as Light without explicit developer justification. If the developer insists, log the justification in CHECKPOINT.md Notes.
 
 | Tier | When | Phases | Adversarial | Default Autonomy |
 |------|------|--------|-------------|------------------|
@@ -187,9 +189,10 @@ Run **full** test suite. If existing tests broke, fix implementation (not old te
 ### 3e: Refactor
 Address SPEC.md Refactoring Notes. Extract duplication, improve naming, apply Phase 0 patterns. Re-run full suite.
 
-**Post-refactor checks:**
+**Post-refactor self-check** (lightweight — done in-context before the fresh anti-slop subagent):
 - **Traceability:** Every new abstraction must be exercised by an existing test. If not → inline it (premature).
 - **Test DRY:** 3+ tests sharing setup → shared fixture. Input-only variation → parameterize.
+- **Hygiene scan:** TODO/FIXME/HACK markers, generic error messages, over-broad exception handling, magic numbers, dead code paths. Fix immediately — don't leave for the anti-slop subagent.
 
 ### 3f: Mark Phase Complete
 - `TaskUpdate` → `completed`. Full test-plan reconciliation (every spec test has a corresponding test case).
@@ -198,7 +201,7 @@ Address SPEC.md Refactoring Notes. Extract duplication, improve naming, apply Ph
 
 ### Anti-Slop Subagent (between Phase 3 and Phase 4)
 
-Launch a fresh `Explore` subagent to scan all code written in Phase 3 for the patterns defined in `/polish` Phase 2 (development artifact comments, low-value docstrings, restating comments) plus: generic error messages, TODO/FIXME/HACK, over-broad exception handling, magic numbers, dead code, unnecessary abstractions, copy-paste. Fix findings. This replaces the old self-check — fresh context is more honest than self-review.
+Launch a fresh `Explore` subagent to scan all code written in Phase 3 for the patterns defined in `/polish` Phase 2 (development artifact comments, low-value docstrings, restating comments) plus: unnecessary abstractions, copy-paste duplication, and any hygiene issues that survived the 3e self-check. Fix findings. Fresh context catches what self-review misses — the 3e self-check handles the obvious, this catches the subtle.
 
 ### Spec Feedback Loop
 
@@ -216,26 +219,35 @@ Triggered when implementation reveals SPEC.md is wrong or incomplete. See [Appen
 **Purpose:** Adversarial review with iterative convergence. **Light tier skips this phase entirely.**
 
 ### 4a: Initial Review
-Update CHECKPOINT.md: Phase: 4, Convergence Iteration: 0. Run `/git-review --external`.
+Update CHECKPOINT.md: Phase: 4. **First entry:** set Convergence Iteration: 0. **Spec-triggered re-entry** from 4c: add +1 penalty to the counter before reviewing (spec churn during convergence is expensive — one spec-triggered cycle costs 2 iterations total). Run `/git-review --external`.
 
 `/git-review` applies its standard review criteria (see `git-review.md` Review Criteria section). **VDD-specific additions** for the adversary to emphasize beyond standard criteria: spec compliance (every SPEC.md requirement has a traceable test+implementation pair), test necessity audit ("if this test were deleted, what production failure goes undetected?"), test impact classification per `/polish` Phase 3 tiers.
 
 ### 4b: Triage
 Locate REVIEW_SUMMARY.md using `/git-review`'s review output structure (see `git-review.md` Directory Layout + Branch Name Sanitization): resolve via `.claude/reviews/<sanitized-branch>/` → newest timestamp directory. Applied findings are resolved. Triage Skipped findings.
 
-- **Only MINOR/POTENTIAL/deferred-IMPORTANT remain → Converged.** Proceed to Phase 5.
+**Deferral rules:**
+- **CRITICAL findings cannot be deferred.** If a CRITICAL was "Skipped" during interactive fix, it remains unresolved and blocks convergence until addressed or the developer explicitly accepts it via the 4d escalation prompt.
+- **IMPORTANT findings** skipped during interactive prompts count as deferred — record in CHECKPOINT.md Deferred Issues and document in the completion summary. Deferred IMPORTANT does not block convergence.
+
+**Convergence test:**
+- **Only MINOR/POTENTIAL/deferred-IMPORTANT remain → Converged.** In `autonomous` mode, auto-proceed to Phase 5. In `supervised` mode, auto-proceed after the first iteration if no CRITICAL/IMPORTANT remain. In `guided` mode, ask developer before proceeding.
 - **CRITICAL or undeferred IMPORTANT remain →** proceed to 4c.
 
 ### 4c: Fix + Re-Review Loop
-Fix CRITICAL findings. Fix IMPORTANT unless developer explicitly deferred. TDD applies to behavioral fixes (write regression test first). Run full test suite. If fixes require spec changes → Spec Feedback Loop → new implementation phase → return to 4a (costs 2 convergence iterations as spec-churn deterrent).
+Fix CRITICAL findings. Fix IMPORTANT unless developer explicitly deferred. **TDD applies to behavioral fixes:** changed logic, new code paths, altered API surface → write regression test first, verify Red, implement, verify Green. Non-behavioral fixes (formatting, naming, docs, dead code) → apply directly. When uncertain, write the test.
 
-Run `/git-review --external` for re-review (never `--quick` for convergence). Increment Convergence Iteration.
+Run full test suite. If fixes require spec changes → Spec Feedback Loop → new implementation phase → return to 4a (costs 2 convergence iterations as spec-churn deterrent). A second spec issue during convergence escalates to the developer regardless of iteration count.
+
+Run `/git-review --external` for re-review (never `--quick` for convergence — quick mode produces no REVIEW_SUMMARY.md, breaking the triage protocol). Increment Convergence Iteration.
 
 ### 4d: Convergence Check
 
 **Quality signal:** Track CRITICAL + IMPORTANT count per iteration. **If count is not decreasing between iterations, escalate immediately** — don't wait for the cap: "Review quality not converging — [N] issues unchanged. Fix approach may need rethinking."
 
-**Iteration cap:** Standard: 3 iterations. Critical tier: 2 iterations. When cap reached, present options: **Fix and review again** (extends cap by 1) | **Accept remaining issues** (document and proceed) | **I'll handle manually** (handoff, stop orchestration).
+**Iteration cap:** Standard: 3 iterations. Critical tier: 2 iterations. Cap triggers when Convergence Iteration ≥ cap (not exactly equal — spec re-entries can cause the counter to skip values). When cap reached, present options: **Fix and review again** (extends cap by 1) | **Accept remaining issues** (document and proceed) | **I'll handle manually** (handoff — update CHECKPOINT.md status to `completed` with `Completion Mode: manual-handoff`, remove breadcrumb, present summary, stop orchestration).
+
+**Gate:** Only MINOR/POTENTIAL/deferred-IMPORTANT remain, OR developer explicitly accepts remaining issues.
 
 ---
 
@@ -284,7 +296,7 @@ Present: what was built, files changed, test coverage, TDD compliance, convergen
 
 Source data: CHECKPOINT.md → metrics; SPEC.md Iteration Log → revision count + surprises; REVIEW_SUMMARY.md → findings counts + "What Went Well." In `supervised`/`autonomous` mode, generate automatically. In `guided` mode, present draft and ask developer for additions.
 
-After writing, apply any "Suggested Rules" entries as CLAUDE.md additions (with developer approval in `guided` mode). This closes the compounding loop: the project gets smarter with each feature.
+After writing, present any "Suggested Rules" entries to the developer for approval before adding to CLAUDE.md — **this is a hard gate in all autonomy modes** to prevent instruction creep. This closes the compounding loop: the project gets smarter with each feature, but only with human curation.
 
 **Cleanup:** CHECKPOINT.md status → `completed`. Remove this feature's CLAUDE.md breadcrumb (preserve others).
 
