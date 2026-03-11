@@ -331,7 +331,7 @@ Examples: `/new-feature-vdd user search preferences endpoint` · `/new-feature-v
 | 2d | `/plan-review` (optional) | Multi-model spec review |
 | 3→4 | `Explore` subagent | Anti-slop scan (fresh context) |
 | 4 | `/git-review --external` | Adversarial review + convergence |
-| 5a | `/deslop-around` → `/polish` | Cleanup passes |
+| 5a | `/deslop-around:deslop-around apply` → `/polish` | Cleanup passes |
 | 5d | `/git-review --quick` | Post-convergence sanity check |
 | 5e | `RETROSPECTIVE.md` generation | Cross-feature learning — metrics, patterns, suggested rules |
 
@@ -464,6 +464,7 @@ Written at Phase 2a (earliest slug exists). Removed on completion. Line-level ed
 - `/git-review --external` discovers spec docs via PLAN.md in `.claude/docs/[slug]/`. Branch `feat/<slug>` matches `.claude/docs/<slug>/`. Single-directory shortcut: when only one `.claude/docs/` dir exists, branch matching is skipped.
 - `/plan-review` uses CRITICAL/IMPORTANT/MINOR/GOOD severities (no POTENTIAL). GOOD findings are informational and do not affect convergence triage (treat as equivalent to MINOR for convergence purposes). Creates new versioned snapshots automatically.
 - `/deslop-around` is always available — no fallback needed. It is a prerequisite for this workflow.
+- POTENTIAL is a `/git-review`-specific severity (low-confidence findings). `/plan-review` does not produce it. Convergence logic references POTENTIAL only in the context of `/git-review` output.
 - Review directory paths: `/git-review` sanitizes branch names (`/` → `--`).
 
 > **Note:** VDD's formal verification (purity boundaries, Kani/Dafny/TLA+) is intentionally omitted. For safety-critical features, add a Verification Strategy to the spec and formal hardening after implementation.
