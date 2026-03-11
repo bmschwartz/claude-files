@@ -453,7 +453,6 @@ Written at Phase 2a (earliest slug exists). Removed on completion. Line-level ed
 | `Explore` / `feature-dev:code-explorer` | `general-purpose` subagent with same objectives |
 | `feature-dev:code-architect` | `Plan` subagent |
 | `/plan-review` | Skip; user reviews spec manually at 2d gate |
-| `/deslop-around` | Skip mechanical pass; `/polish` covers the semantic subset. Note skip in commit message. |
 | `/polish` | Inline cleanup: scan for dev artifact comments, low-value docstrings, LOW-impact tests. Commit before handoff. |
 | `/git-review` | Fresh `Explore`/`general-purpose` subagent with adversarial prompt, diff, and SPEC.md. Write to `.claude/reviews/<sanitized-branch>/fallback-<timestamp>/REVIEW_SUMMARY.md` (follow `git-review.md` sanitization rules). Update REVIEW.md. Present findings interactively (Apply/Skip). Convergence loop still applies. |
 | `agent` CLI (for `--external`) | Run `/git-review` without `--external`. Note downgrade in CHECKPOINT.md Notes. |
@@ -464,6 +463,7 @@ Written at Phase 2a (earliest slug exists). Removed on completion. Line-level ed
 
 - `/git-review --external` discovers spec docs via PLAN.md in `.claude/docs/[slug]/`. Branch `feat/<slug>` matches `.claude/docs/<slug>/`. Single-directory shortcut: when only one `.claude/docs/` dir exists, branch matching is skipped.
 - `/plan-review` uses CRITICAL/IMPORTANT/MINOR/GOOD severities (no POTENTIAL). GOOD findings are informational and do not affect convergence triage (treat as equivalent to MINOR for convergence purposes). Creates new versioned snapshots automatically.
+- `/deslop-around` is always available — no fallback needed. It is a prerequisite for this workflow.
 - Review directory paths: `/git-review` sanitizes branch names (`/` → `--`).
 
 > **Note:** VDD's formal verification (purity boundaries, Kani/Dafny/TLA+) is intentionally omitted. For safety-critical features, add a Verification Strategy to the spec and formal hardening after implementation.
