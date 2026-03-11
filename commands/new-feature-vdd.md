@@ -101,25 +101,18 @@ Update CHECKPOINT.md: Substep: 2b.
 
 Create `.claude/docs/[slug]/plans/<YYYYMMDD-HHMMSS>/SPEC.md`.
 
-**Required sections:**
-1. Feature Overview
-2. Codebase Context
-3. Discovery Summary
-4. Requirements (functional with priority checkboxes, non-functional)
-5. Implementation Phases — each TDD-structured: Tests to Write First (with impact: HIGH/MEDIUM/LOW), Implementation Tasks (file:change), Refactoring Notes
-6. Testing Strategy
-7. Success Criteria
-8. Iteration Log (initially empty)
+**SPEC.md structure:** Follow the template in `new-feature.md` Phase 4 (SPEC.md structure section). Add these **TDD-specific additions** to each Implementation Phase:
+- `#### Tests to Write First` — test descriptions with impact tier (HIGH/MEDIUM/LOW per `/polish` Phase 3 definitions). Target ≥50% HIGH, ≤25% LOW.
+- `#### Refactoring Notes` — cleanup expected after green
 
-**Spec quality gates** (apply mechanically before review):
+**Spec quality gates** (apply mechanically before review — these mirror `/plan-review` dimensions and catch issues before investing in multi-model review):
 1. **Signature Tracing:** Trace full parameter chain for every modified/called function. Grep actual signatures.
 2. **Draft Syntax:** LLM prompts, DB queries, API calls, DSL syntax must include draft text — not abstract descriptions.
 3. **Error Path Enumeration:** Per operation: success path, domain failure, infrastructure failure.
 4. **Convention Cross-Check:** Test naming, imports, assertion formats, logging vs. project CLAUDE.md.
 5. **Data Quality:** Explicit handling for missing/null/empty/malformed values from external sources.
-6. **Test Impact Balance:** Target ≥50% HIGH, ≤25% LOW. Inverted ratio = over-testing edges, under-testing core.
-7. **Test DRY:** 3+ tests sharing setup → shared fixture. Input-only variation → parameterize.
-8. **Comment Policy:** Docstrings only for public APIs and non-obvious behavior. No restating obvious code.
+6. **Test DRY:** 3+ tests sharing setup → shared fixture. Input-only variation → parameterize (see `/polish` Phase 3 for consolidation patterns).
+7. **Comment Policy:** Docstrings only for public APIs and non-obvious behavior (see `/polish` Phase 2 for what constitutes low-value).
 
 **Critical tier — Spec Adversary:** Launch a parallel `general-purpose` subagent that attempts to break the spec: find ambiguities, missing edge cases, unstated assumptions, conflicting requirements. Incorporate findings before 2c. This shifts adversarial pressure earlier — cheaper to fix specs than code.
 
@@ -127,9 +120,9 @@ Create `.claude/docs/[slug]/plans/<YYYYMMDD-HHMMSS>/SPEC.md`.
 
 Update CHECKPOINT.md: Substep: 2c.
 
-**Always:** CHECKLIST.md (tasks by phase, labeled: `#### Tests` before `#### Implementation`), README.md (navigation).
+Generate supporting documents using the templates in `new-feature.md` (Supporting Document Templates section). TDD-specific modification to CHECKLIST.md: label groups within each phase as `#### Tests (complete before implementation)` and `#### Implementation (only after all tests pass)`.
 
-**Conditionally:** KEY_DECISIONS.md (high-impact decisions only), PR_STRATEGY.md (multi-PR only — see [Appendix C](#appendix-c-multi-pr-workflow)).
+**Always:** CHECKLIST.md, README.md. **Conditionally:** KEY_DECISIONS.md (high-impact decisions only), PR_STRATEGY.md (multi-PR only — see [Appendix C](#appendix-c-multi-pr-workflow)). **Not generated:** FIXTURES.md — SPEC.md's "Tests to Write First" sections serve as test data source of truth.
 
 **Generate PLAN.md** at doc root linking to current version.
 
@@ -195,7 +188,7 @@ Address SPEC.md Refactoring Notes. Extract duplication, improve naming, apply Ph
 
 ### Anti-Slop Subagent (between Phase 3 and Phase 4)
 
-Launch a fresh `Explore` subagent to scan all code written in Phase 3 for: generic error messages, TODO/FIXME/HACK, over-broad exception handling, magic numbers, dead code, unnecessary abstractions, copy-paste, extraneous docstrings, **development artifact comments** (references to plan phases, micro-cycles, spec, convergence process). Fix findings. This replaces the old self-check — fresh context is more honest than self-review.
+Launch a fresh `Explore` subagent to scan all code written in Phase 3 for the patterns defined in `/polish` Phase 2 (development artifact comments, low-value docstrings, restating comments) plus: generic error messages, TODO/FIXME/HACK, over-broad exception handling, magic numbers, dead code, unnecessary abstractions, copy-paste. Fix findings. This replaces the old self-check — fresh context is more honest than self-review.
 
 ### Spec Feedback Loop
 
@@ -215,10 +208,10 @@ Triggered when implementation reveals SPEC.md is wrong or incomplete. See [Appen
 ### 4a: Initial Review
 Update CHECKPOINT.md: Phase: 4, Convergence Iteration: 0. Run `/git-review --external`.
 
-**Adversary focus areas** (beyond standard code quality): test quality (tautological? over-mocked? honest?), spec compliance (every requirement has test+implementation pair), test DRY violations, test necessity ("if deleted, what production failure goes undetected?"), documentation slop, development artifact comments.
+`/git-review` applies its standard review criteria (see `git-review.md` Review Criteria section). **VDD-specific additions** for the adversary to emphasize beyond standard criteria: spec compliance (every SPEC.md requirement has a traceable test+implementation pair), test necessity audit ("if this test were deleted, what production failure goes undetected?"), test impact classification per `/polish` Phase 3 tiers.
 
 ### 4b: Triage
-Read REVIEW_SUMMARY.md from the review round directory (resolve via branch-scoped path: `.claude/reviews/<sanitized-branch>/` → newest timestamp). Applied findings are resolved. Triage Skipped findings.
+Locate REVIEW_SUMMARY.md using `/git-review`'s review output structure (see `git-review.md` Directory Layout + Branch Name Sanitization): resolve via `.claude/reviews/<sanitized-branch>/` → newest timestamp directory. Applied findings are resolved. Triage Skipped findings.
 
 - **Only MINOR/POTENTIAL/deferred-IMPORTANT remain → Converged.** Proceed to Phase 5.
 - **CRITICAL or undeferred IMPORTANT remain →** proceed to 4c.
@@ -405,7 +398,7 @@ Written at Phase 2a (earliest slug exists). Removed on completion. Line-level ed
 | `feature-dev:code-architect` | `Plan` subagent |
 | `/plan-review` | Skip; user reviews spec manually at 2d gate |
 | `/polish` | Inline cleanup: scan for dev artifact comments, low-value docstrings, LOW-impact tests. Commit before handoff. |
-| `/git-review` | Fresh `Explore`/`general-purpose` subagent with adversarial prompt, diff, and SPEC.md. Write to `.claude/reviews/<sanitized-branch>/fallback-<timestamp>/REVIEW_SUMMARY.md`. Update REVIEW.md. Present findings interactively (Apply/Skip). Convergence loop still applies. |
+| `/git-review` | Fresh `Explore`/`general-purpose` subagent with adversarial prompt, diff, and SPEC.md. Write to `.claude/reviews/<sanitized-branch>/fallback-<timestamp>/REVIEW_SUMMARY.md` (follow `git-review.md` sanitization rules). Update REVIEW.md. Present findings interactively (Apply/Skip). Convergence loop still applies. |
 | `agent` CLI (for `--external`) | Run `/git-review` without `--external`. Note downgrade in CHECKPOINT.md Notes. |
 
 ---
