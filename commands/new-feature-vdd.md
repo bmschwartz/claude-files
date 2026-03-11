@@ -14,7 +14,7 @@ Determine tier at the start. When ambiguous, start Light and escalate if complex
 
 | Tier | When | Phases | Adversarial | Default Autonomy |
 |------|------|--------|-------------|------------------|
-| **Light** | ≤3 files, no new modules, low risk | 0 (quick) → 1 (1 round) → 2 (minimal) → 3 → 5 | Skip Phase 4; run `/git-review --quick` in 5d instead | `autonomous` |
+| **Light** | ≤3 files, no new modules, low risk | 0 (quick) → 1 (1 round) → 2 → 3 → 5 | Skip Phase 4; run `/git-review --quick` in 5d instead | `autonomous` |
 | **Standard** | Typical feature | All phases | Full convergence | `supervised` |
 | **Critical** | Security, data model, public API, financial | All phases + spec adversary (2b) | Full convergence + tighter cap (2 iterations before escalation) | `guided` |
 
@@ -117,7 +117,7 @@ Create `.claude/docs/[slug]/plans/<YYYYMMDD-HHMMSS>/SPEC.md`. Update CHECKPOINT.
 - `#### Tests to Write First` — test descriptions with impact tier (HIGH/MEDIUM/LOW per `/polish` Phase 3 definitions). Target ≥50% HIGH, ≤25% LOW.
 - `#### Refactoring Notes` — cleanup expected after green
 
-**Spec quality gates** (apply mechanically before review — these mirror `/plan-review` dimensions and catch issues before investing in multi-model review):
+**Spec quality gates** (apply mechanically before review — these mirror `/plan-review` dimensions and catch issues before investing in multi-model review). **Light tier:** Apply gates 1 and 4 only; skip 2, 3, 5, 6, 7.
 1. **Signature Tracing:** Trace full parameter chain for every modified/called function. Grep actual signatures.
 2. **Draft Syntax:** LLM prompts, DB queries, API calls, DSL syntax must include draft text — not abstract descriptions.
 3. **Error Path Enumeration:** Per operation: success path, domain failure, infrastructure failure.
@@ -134,7 +134,7 @@ Update CHECKPOINT.md: Substep: 2c.
 
 Generate supporting documents using the templates in `new-feature.md` (Supporting Document Templates section). TDD-specific modification to CHECKLIST.md: label groups within each phase as `#### Tests (complete before implementation)` and `#### Implementation (only after all tests pass)`.
 
-**Always:** CHECKLIST.md, README.md. **Conditionally:** KEY_DECISIONS.md (high-impact decisions only), PR_STRATEGY.md (multi-PR only — see [Appendix C](#appendix-c-multi-pr-workflow)). **Not generated:** FIXTURES.md — SPEC.md's "Tests to Write First" sections serve as test data source of truth.
+**Always:** CHECKLIST.md, README.md. **Conditionally:** KEY_DECISIONS.md (high-impact decisions only), PR_STRATEGY.md (multi-PR only — see [Appendix C](#appendix-c-multi-pr-workflow)). **Not generated:** FIXTURES.md — SPEC.md's "Tests to Write First" sections serve as test data source of truth. **Light tier:** Skip KEY_DECISIONS.md and PR_STRATEGY.md; generate only CHECKLIST.md and README.md.
 
 **Generate PLAN.md** at doc root linking to current version.
 
@@ -184,7 +184,7 @@ If tests pass unexpectedly: (a) tests pre-existing behavior → note, continue; 
 Write the **minimum** to pass failing tests. No gold-plating.
 
 ### 3d: Verify Green
-Run **full** test suite. If existing tests broke, fix implementation (not old tests, unless spec explicitly changed that behavior). If more tests remain in this phase → return to 3a.
+Run **full** test suite. If existing tests broke, fix implementation (not old tests, unless spec explicitly changed that behavior). Update CHECKPOINT.md `Tests Completed` to reflect tests written so far in the current implementation phase. If more tests remain in this phase → return to 3a.
 
 ### 3e: Refactor
 Address SPEC.md Refactoring Notes. Extract duplication, improve naming, apply Phase 0 patterns. Re-run full suite.
@@ -210,7 +210,7 @@ Triggered when implementation reveals SPEC.md is wrong or incomplete. See [Appen
 - Minor clarifications → edit in place, log in Iteration Log, proceed
 - Circuit breaker: >3 spec revisions in one phase → ask developer to continue, re-scope, or return to Phase 2
 
-**Pre-Phase-4 gate:** If all phases resolved via "behavior pre-existed" with no net code changes, skip Phase 4 → Phase 5 with "feature pre-existed" path.
+**Pre-Phase-4 gate:** If all phases resolved via "behavior pre-existed" with no net code changes, skip the anti-slop subagent and Phase 4 → Phase 5 with "feature pre-existed" path.
 
 ---
 
@@ -232,12 +232,12 @@ Locate REVIEW_SUMMARY.md using `/git-review`'s review output structure (see `git
 
 **Convergence test:**
 - **Only MINOR/POTENTIAL/deferred-IMPORTANT remain → Converged.** In `autonomous` mode, auto-proceed to Phase 5. In `supervised` mode, auto-proceed after the first iteration if no CRITICAL/IMPORTANT remain. In `guided` mode, ask developer before proceeding.
-- **CRITICAL or undeferred IMPORTANT remain →** proceed to **4d** (convergence check) before fixing.
+- **CRITICAL or undeferred IMPORTANT remain →** if Convergence Iteration = 0, proceed directly to **4c** (first iteration — 4d checks are guaranteed no-ops). If Convergence Iteration ≥ 1, proceed to **4d** (convergence check) before fixing.
 
 ### 4c: Fix + Re-Review Loop
 Fix CRITICAL findings. Fix IMPORTANT unless developer explicitly deferred. **TDD applies to behavioral fixes:** changed logic, new code paths, altered API surface → write regression test first, verify Red, implement, verify Green. Non-behavioral fixes (formatting, naming, docs, dead code) → apply directly. When uncertain, write the test.
 
-Run full test suite. If fixes require spec changes → Spec Feedback Loop → new implementation phase → return to 4a (costs 2 convergence iterations as spec-churn deterrent). A second spec issue during convergence escalates to the developer regardless of iteration count.
+Run full test suite. If fixes require spec changes → Spec Feedback Loop → new implementation phase → return to 4a (costs 2 convergence iterations as spec-churn deterrent). **Note:** If the post-spec-reentry review converges (only MINOR/POTENTIAL remain in 4b), proceed to Phase 5 regardless of iteration count — the cap gates further fix cycles, not convergence that already succeeded. A second spec issue during convergence escalates to the developer regardless of iteration count.
 
 Run `/git-review --external` for re-review (never `--quick` for convergence — quick mode produces no REVIEW_SUMMARY.md, breaking the triage protocol). Increment Convergence Iteration. **Return to 4b** to triage the new REVIEW_SUMMARY.md — the convergence test there determines whether to converge (Phase 5) or route through 4d for the convergence cap/quality check before continuing fixes.
 
@@ -245,7 +245,7 @@ Run `/git-review --external` for re-review (never `--quick` for convergence — 
 
 **Reached from 4b** when CRITICAL or undeferred IMPORTANT findings remain. This step enforces quality trends and iteration caps before returning to 4c for fixes.
 
-**Quality signal:** Track CRITICAL + IMPORTANT count per iteration. Update CHECKPOINT.md `Convergence Trend`: `improving` if count decreased, `stalled` if unchanged, `degrading` if increased (leave `N/A` until iteration ≥1). **If stalled or degrading, escalate immediately** — don't wait for the cap: "Review quality not converging — [N] issues unchanged. Fix approach may need rethinking."
+**Quality signal:** Record CRITICAL + IMPORTANT count at every iteration (including iteration 0 — store the baseline in CHECKPOINT.md Notes as `Iteration 0 findings: N`). Update CHECKPOINT.md `Convergence Trend` starting at iteration 1: `improving` if count decreased vs. previous, `stalled` if unchanged, `degrading` if increased (leave `N/A` at iteration 0). **If stalled or degrading, escalate immediately** — don't wait for the cap: "Review quality not converging — [N] issues unchanged. Fix approach may need rethinking."
 
 **Iteration cap:** Standard: 3 iterations. Critical tier: 2 iterations. Cap triggers when Convergence Iteration ≥ cap (not exactly equal — spec re-entries can cause the counter to skip values). When cap reached, present options: **Fix and review again** (extends cap by 1) | **Accept remaining issues** (document and proceed) | **I'll handle manually** (handoff — update CHECKPOINT.md status to `completed` with `Completion Mode: manual-handoff`, remove breadcrumb, present summary, stop orchestration). **If CRITICAL findings remain at cap:** the "Accept remaining issues" option requires the developer to explicitly acknowledge each unresolved CRITICAL by name — list them in the prompt. This satisfies the guardrail ("CRITICAL findings always block convergence") by requiring explicit human sign-off rather than silent acceptance.
 
@@ -258,7 +258,7 @@ Run `/git-review --external` for re-review (never `--quick` for convergence — 
 ## Phase 5: Completion
 
 ### 5a: Cleanup
-Run `/deslop-around:deslop-around apply` (mechanical) then `/polish` (semantic). Skip if no changes since last cleanup (multi-PR mode).
+Run `/deslop-around:deslop-around apply` (mechanical) then `/polish` (semantic). Skip if no changes since last cleanup (multi-PR mode). **Constraint for `/polish`:** Do not delete tests that trace to SPEC.md "Tests to Write First" entries — consolidation (parameterization) is allowed, deletion is not. This preserves the spec-to-test traceability verified in Phase 3f and Phase 4.
 
 ### 5b: Final Test Run
 Full suite. All tests must pass.
@@ -271,7 +271,7 @@ Full suite. All tests must pass.
 - [ ] CHECKLIST.md fully checked off
 
 ### 5d: Quick Final Check (conditional)
-If any code changes after last review → run `/git-review --quick`. CRITICAL found → full `/git-review --external`, return to Phase 4a. **Light tier:** This is the only review — run `/git-review --quick` here regardless.
+If any code changes after last review → run `/git-review --quick`. CRITICAL found → full `/git-review --external`, return to Phase 4a. **Light tier:** This is the only review — run `/git-review --quick` here regardless. If `--quick` finds CRITICAL, escalate: present findings to developer with options: **Fix and re-run --quick** | **Enter full Phase 4** (override Light skip) | **Accept and proceed** (requires explicit per-CRITICAL acknowledgement, same as 4d guardrail).
 
 ### 5e: Summary + Retrospective
 Present: what was built, files changed, test coverage, TDD compliance, convergence status, deferred issues, spec changes, next steps.
@@ -298,7 +298,7 @@ Present: what was built, files changed, test coverage, TDD compliance, convergen
 - [Additions to CLAUDE.md — e.g., "Convention: always validate X before Y"]
 ```
 
-Source data: CHECKPOINT.md → metrics; SPEC.md Iteration Log → revision count + surprises; REVIEW_SUMMARY.md → findings counts + "What Went Well." **Light tier:** Phase 4 is skipped and 5d uses `--quick` (no REVIEW_SUMMARY.md) — source findings data from the `--quick` console output instead; omit convergence metrics from the retrospective. In `supervised`/`autonomous` mode, generate automatically. In `guided` mode, present draft and ask developer for additions.
+Source data: CHECKPOINT.md → metrics; SPEC.md Iteration Log → revision count + surprises; REVIEW_SUMMARY.md → findings counts + "What Went Well." **Light tier:** Phase 4 is skipped and 5d uses `--quick` (no REVIEW_SUMMARY.md). Report only CRITICAL count from `--quick` output; note "IMPORTANT/MINOR not assessed (quick review mode)" in the Metrics section. Omit convergence metrics (iterations, trend) from the retrospective. In `supervised`/`autonomous` mode, generate automatically. In `guided` mode, present draft and ask developer for additions.
 
 After writing, present any "Suggested Rules" entries to the developer for approval before adding to CLAUDE.md — **this is a hard gate in all autonomy modes** to prevent instruction creep. This closes the compounding loop: the project gets smarter with each feature, but only with human curation.
 
@@ -439,7 +439,7 @@ Written at Phase 2a (earliest slug exists). Removed on completion. Line-level ed
 
 **Phase boundary re-reads (conditional):** Re-read a doc only when recovering from compaction OR its content may have changed. Use Spec Version field and Iteration Log as change signals. Available docs by phase: 2a+ has CHECKPOINT + EXPLORATION; 2b+ adds SPEC; 2c+ adds CHECKLIST.
 
-**Task descriptions as state carriers:** Include enough context in `TaskCreate` descriptions that a compacted model can understand: files involved, tests to write, acceptance criteria.
+**Task descriptions as state carriers:** `TaskCreate` for each implementation phase should follow: `content: "Phase N: [name]"`, `activeForm: "Implementing Phase N: [name]"`. Include in the description: files involved, tests to write (from SPEC.md "Tests to Write First"), acceptance criteria, and current approach (from blueprint). This ensures a compacted model can recover context.
 
 **Compaction indicators (fallback):** Can't recall file paths from Phase 0, reference spec in general terms, unsure of current substep → read CHECKPOINT.md to recover.
 
@@ -461,7 +461,7 @@ Written at Phase 2a (earliest slug exists). Removed on completion. Line-level ed
 ## Appendix F: Integration Notes
 
 - `/git-review --external` discovers spec docs via PLAN.md in `.claude/docs/[slug]/`. Branch `feat/<slug>` matches `.claude/docs/<slug>/`. Single-directory shortcut: when only one `.claude/docs/` dir exists, branch matching is skipped.
-- `/plan-review` uses CRITICAL/IMPORTANT/MINOR/GOOD severities (no POTENTIAL). Creates new versioned snapshots automatically.
+- `/plan-review` uses CRITICAL/IMPORTANT/MINOR/GOOD severities (no POTENTIAL). GOOD findings are informational and do not affect convergence triage (treat as equivalent to MINOR for convergence purposes). Creates new versioned snapshots automatically.
 - Review directory paths: `/git-review` sanitizes branch names (`/` → `--`).
 
 > **Note:** VDD's formal verification (purity boundaries, Kani/Dafny/TLA+) is intentionally omitted. For safety-critical features, add a Verification Strategy to the spec and formal hardening after implementation.
