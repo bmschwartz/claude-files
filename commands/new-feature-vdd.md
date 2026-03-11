@@ -49,6 +49,8 @@ The `--autonomy` flag controls how much human oversight the workflow enforces. C
 ## Process Flow
 
 ```
+Legend: ∥ = parallel/background  |  * = varies by --autonomy mode
+
 ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
 │ Phase 0:         │    │ Phase 1:         │    │ Phase 2:         │
 │ Codebase         │ →  │ Focused          │ →  │ Spec +           │
@@ -108,9 +110,6 @@ The `--autonomy` flag controls how much human oversight the workflow enforces. C
                         │  summary +       │
                         │  retrospective)  │
                         └──────────────────┘
-
-∥ = parallel / background execution
-* = behavior varies by --autonomy mode (see Autonomy Modes)
 ```
 
 ---
@@ -208,7 +207,7 @@ This ensures the model unconditionally re-reads the checkpoint every turn, even 
    - Find similar features in the codebase
    - Identify coding conventions and architectural patterns
    - Look for reusable utilities or abstractions
-   - **Check for retrospectives:** Scan `.claude/docs/*/RETROSPECTIVE.md` for "Patterns to Reuse" and "Process Improvements" from prior features. Incorporate relevant lessons into the context report.
+   - **Check for retrospectives:** Scan `.claude/docs/*/RETROSPECTIVE.md` for "Patterns to Reuse" and "Process Improvements" from prior features. Incorporate relevant lessons into the context report. If no retrospective files exist (first feature or clean project), proceed without — this check is opportunistic, not required.
 
 2. **Architecture Context Agent** (`Explore` subagent)
    - Map relevant dependencies and integration points
@@ -453,7 +452,7 @@ If the project supports any of the following, start them as background watchers 
 - **Linting watch:** `eslint --watch`, `ruff watch`, or equivalent. Catches style violations and common errors incrementally.
 - **Background test runner:** `pytest-watch`, `jest --watch`, `cargo-nextest` in watch mode. Provides near-instant feedback on test results after each file save.
 
-These are **advisory signals**, not gates. A background type error does not block the current substep — but it should be investigated before the next explicit test run (3b/3d). Background watchers reduce the cost of the Red→Green loop by surfacing errors seconds after they're introduced, rather than minutes later during a full test run.
+These are **advisory signals**, not gates. A background type error does not block the current substep — but it should be investigated before the next explicit test run (3b/3d) to avoid wasting a full test cycle on a known issue. If background signals report errors but the explicit test gate (3b/3d) passes, the background error is either in untouched code or a false positive — note it and proceed. Background watchers reduce the cost of the Red→Green loop by surfacing errors seconds after they're introduced, rather than minutes later during a full test run.
 
 **Cleanup:** Stop background watchers when Phase 3 completes (before Phase 4) to avoid interference with adversarial review tooling.
 
@@ -485,7 +484,7 @@ Run the **full** test suite. All tests — new and existing — must pass.
 
 **Micro-cycle loop:** If more tests remain in this phase's "Tests to Write First" list, return to **3a** for the next micro-cycle. Only proceed to **3e** (Refactor) when all tests for this phase have been written and pass.
 
-**Micro-cycle pipelining (optional optimization):** While waiting for 3d test results, you may begin _drafting_ the next micro-cycle's test cases (3a) in a scratch buffer — but do NOT commit them to the test file until 3d confirms Green. This overlaps think time with execution time without violating Red-Before-Green discipline. If 3d reveals failures, discard the draft and fix the implementation first.
+**Micro-cycle pipelining (optional optimization):** While waiting for 3d test results, you may begin _drafting_ the next micro-cycle's test cases (3a) in a separate temporary file or mental plan — but do NOT write them into the actual test file until 3d confirms Green. This overlaps think time with execution time without violating Red-Before-Green discipline. If 3d reveals failures, discard the draft and fix the implementation first.
 
 #### 3e: Refactor
 
@@ -513,7 +512,7 @@ Re-run the full test suite after refactoring.
 - If another implementation phase exists, use `TaskUpdate` to mark the **next** phase task as `in_progress` and move to it
 - If this was the last implementation phase, all phase tasks should be `completed` — proceed to Phase 4
 
-**Phase 3→4 pre-staging (optimization):** When completing the _last_ implementation phase (3f), stop background quality watchers and begin pre-staging Phase 4 while the final git checkpoint commits. Specifically: stage the diff for review (`git diff origin/main..HEAD > /tmp/phase4-prep.patch`) and begin reading the current SPEC.md and CHECKLIST.md to prepare the adversarial review context. This overlaps Phase 4's setup I/O with Phase 3's finalization, reducing the wall-clock gap between implementation and review.
+**Phase 3→4 pre-staging (optimization):** When completing the _last_ implementation phase (3f), stop background quality watchers and begin pre-staging Phase 4 while the final git checkpoint commits. Specifically: prepare the diff for review (`git diff origin/main..HEAD`) and begin reading the current SPEC.md and CHECKLIST.md to prepare the adversarial review context. This overlaps Phase 4's setup I/O with Phase 3's finalization, reducing the wall-clock gap between implementation and review.
 
 ★ Insight ─────────────────────────────────────
 As you implement, provide insights about:
@@ -765,7 +764,7 @@ Write `.claude/docs/[feature-name]/RETROSPECTIVE.md`:
 - [Gates that were too strict or too loose for this feature's risk level]
 ```
 
-In `supervised`/`autonomous` mode, generate the retrospective automatically from CHECKPOINT.md history, the Iteration Log, and convergence data. In `guided` mode, present a draft and ask the developer for additions.
+In `supervised`/`autonomous` mode, generate the retrospective automatically by mapping: CHECKPOINT.md's phase count and convergence iterations → Process Metrics; SPEC.md's Iteration Log entries → Spec revisions count and "What Surprised Us"; REVIEW_SUMMARY.md findings → CRITICAL/IMPORTANT counts and "What Went Well" (patterns that avoided issues); Phase 0 exploration findings → "Patterns to Reuse." If any source is missing (e.g., Phase 4 was skipped), omit the corresponding section rather than guessing. In `guided` mode, present a draft and ask the developer for additions.
 
 **Cross-feature value:** Future Phase 0 explorations should check for existing `RETROSPECTIVE.md` files in `.claude/docs/*/` to inherit lessons learned. Patterns flagged in "Patterns to Reuse" are high-value signals for the Pattern Discovery Agent.
 
