@@ -39,7 +39,7 @@ This process is iterative — the user may choose to run another review cycle af
 **Default external models** (when `--models` is not specified):
 
 - `composer-1.5`
-- `gpt-5.3-codex-high`
+- `gpt-5.4-high-fast`
 - `gemini-3.1-pro`
 
 Parse `$ARGUMENTS` by splitting on whitespace. Extract any flags first, then treat the remaining positional tokens as project root and plan root. If fewer than two positional paths are provided, report an error and ask the user to provide both paths.
