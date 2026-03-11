@@ -1,6 +1,6 @@
 # Feature Development with TDD + Adversarial Convergence
 
-> **v1.0.0** · Merged from `new-feature.md` (exploration-first, tool-integrated) and `vdd.md` (TDD discipline, adversarial convergence). Applies VDD's adversarial convergence principles without formal verification.
+> **v1.1.0** · Merged from `new-feature.md` (exploration-first, tool-integrated) and `vdd.md` (TDD discipline, adversarial convergence). Applies VDD's adversarial convergence principles without formal verification. v1.1.0 adds progressive autonomy modes, background quality signals, micro-cycle pipelining, Phase 3→4 pre-staging, and feature retrospectives for cross-feature learning.
 
 ## Overview
 
@@ -11,6 +11,7 @@ This command orchestrates feature development using an **explore → spec → te
 - **Red Before Green:** No implementation code exists without a failing test that demanded it.
 - **Anti-Slop Bias:** The first "correct" version is assumed to contain hidden debt. Trust is earned through adversarial survival.
 - **Fresh Context:** Each adversarial review uses fresh subagent context for the review itself — no relationship drift, no accumulated goodwill. The main orchestrator retains prior context for continuity but does not perform the adversarial assessment.
+- **Progressive Autonomy:** The workflow adapts to feature risk. Low-risk features auto-advance through gates with minimal human intervention; high-risk features enforce every checkpoint. The `--autonomy` flag controls the level of human oversight (see Autonomy Modes).
 
 > **Note:** VDD's formal verification architecture (purity boundaries, provable properties, Kani/Dafny/TLA+) is intentionally omitted for general use. For safety-critical, financial, or security-critical features, consider adding a Verification Strategy to the spec and formal hardening steps after implementation.
 
@@ -23,6 +24,28 @@ This command orchestrates feature development using an **explore → spec → te
 | **Tracker** | Claude Code (main context) | Progress tracking via `TaskCreate` / `TaskUpdate` / `TaskList` |
 | **Adversary** | `/git-review --external` (with convergence loop) | Code review with iterative refinement until convergence (fallback: fresh `Explore` or `general-purpose` subagent) |
 
+## Autonomy Modes
+
+The `--autonomy` flag controls how much human oversight the workflow enforces. Choose based on feature risk, team confidence, and how well-understood the domain is.
+
+| Mode | Flag | Human Gates | Best For |
+|------|------|-------------|----------|
+| **Guided** | `--autonomy guided` (default) | Every phase transition: spec approval (2d), each convergence iteration (4e), completion (5e) | High-risk features, unfamiliar domains, security-critical work |
+| **Supervised** | `--autonomy supervised` | Spec approval (2d) and convergence acceptance (4e) only. Minor spec clarifications auto-proceed. Implementation phases auto-advance when all tests pass. | Medium-risk features where the spec is well-understood |
+| **Autonomous** | `--autonomy autonomous` | Spec approval (2d) only. Convergence auto-accepts when only MINOR/POTENTIAL remain. Spec feedback loop auto-proceeds for non-significant changes. | Low-risk features, well-patterned work, trusted codebase |
+
+**How autonomy modes affect specific gates:**
+
+- **Phase 1 (Focused Discovery):** In `autonomous` mode, if Phase 0 exploration answers all four gate conditions (success criteria, edge cases, acceptance criteria, implementation phases), skip Phase 1 entirely and draft the spec with explicit assumptions.
+- **Phase 2d (Spec Review Gate):** Always requires human approval in all modes — the spec is the foundation.
+- **Phase 3 (Spec Feedback Loop):** In `supervised`/`autonomous` mode, non-significant spec changes (parameter renaming, internal clarifications) auto-proceed without notification. The circuit breaker (>3 revisions) still triggers in all modes.
+- **Phase 4e (Convergence Check):** In `autonomous` mode, if only MINOR/POTENTIAL findings remain after any iteration, auto-converge without asking. In `supervised` mode, auto-converge after the first iteration if no CRITICAL/IMPORTANT remain.
+- **Phase 5 (Completion):** In `supervised`/`autonomous` mode, skip the developer review prompt and proceed directly to summary.
+
+> **Guardrail:** Regardless of autonomy mode, CRITICAL findings in Phase 4 always block convergence until addressed. The `--autonomy` flag reduces ceremony, not safety.
+
+---
+
 ## Process Flow
 
 ```
@@ -30,7 +53,8 @@ This command orchestrates feature development using an **explore → spec → te
 │ Phase 0:         │    │ Phase 1:         │    │ Phase 2:         │
 │ Codebase         │ →  │ Focused          │ →  │ Spec +           │
 │ Exploration      │    │ Discovery        │    │ Review Gate      │
-│ (2-3 agents)     │    │ (adaptive)       │    │ (/plan-review)   │
+│ (2-3 agents ∥)   │    │ (adaptive;       │    │ (/plan-review)   │
+│ + retrospectives │    │  skip if auto*)  │    │                  │
 └──────────────────┘    └──────────────────┘    └──────────┬───────┘
                                                            │
                                     ┌──────────────────────┘
@@ -41,19 +65,21 @@ This command orchestrates feature development using an **explore → spec → te
                    │    │ Implementation       │      (new phase)
                    │    │                      │
                    │    │  ┌─── per phase ───┐ │
-                   │    │  │ Write tests     │ │
-                   │    │  │ Verify Red      │ │
-                   │    │  │ Implement       │ │
-                   │    │  │ Verify Green    │ │
-                   │    │  │ Refactor+check  │ │
-                   │    │  └────────┬────────┘ │
+                   │    │  │ Write tests     │ │  ┌─────────────────┐
+                   │    │  │ Verify Red      │ │  │ ∥ Background:    │
+                   │    │  │ Implement       │ ├──┤ type-check watch │
+                   │    │  │ Verify Green    │ │  │ lint watch       │
+                   │    │  │ Refactor+check  │ │  │ test watch       │
+                   │    │  └────────┬────────┘ │  └─────────────────┘
                    │    │     spec  │           │
                    │    │     issue?├──→ update SPEC.md
-                   │    │           │   (notify if significant)
+                   │    │           │   (notify if significant;
+                   │    │           │    auto in supervised/auto*)
                    │    │           │   resume at 3a/3c/current
                    │    │           │   *>3 revisions → ask user
                    │    └─────┬─────────────────┘
                    │          │ all phases done
+                   │          │ (pre-stage Phase 4 ∥)
                    │          ▼
                    │    ┌──────────────────────┐
                    │    │ Phase 4: Adversarial │
@@ -67,7 +93,7 @@ This command orchestrates feature development using an **explore → spec → te
                    │    │   re-review ← fix │ POTENTIAL/
                    │    │   (default 3×)    │ deferred?
                    │    │                   │──→ converged
-                   │    │                   │
+                   │    │                   │    (auto in auto*)
                    │    │  spec issue? ─────┘
                    │    └───────┬──┘
                    │            │
@@ -79,8 +105,12 @@ This command orchestrates feature development using an **explore → spec → te
                         │ Phase 5:         │
                         │ Completion       │
                         │ (final tests +   │
-                        │  summary)        │
+                        │  summary +       │
+                        │  retrospective)  │
                         └──────────────────┘
+
+∥ = parallel / background execution
+* = behavior varies by --autonomy mode (see Autonomy Modes)
 ```
 
 ---
@@ -102,6 +132,7 @@ Convergence Iteration: 0
 Tests Completed: 0 of N
 Test Command: pytest -xvs
 Spec Version: plans/<YYYYMMDD-HHMMSS>/
+Autonomy Mode: guided
 Deferred Issues: none
 Notes: [1-2 sentences of recovery context, e.g. "3 of 5 tests passing, remaining 2 need the user fixture from Phase 1"]
 ```
@@ -177,6 +208,7 @@ This ensures the model unconditionally re-reads the checkpoint every turn, even 
    - Find similar features in the codebase
    - Identify coding conventions and architectural patterns
    - Look for reusable utilities or abstractions
+   - **Check for retrospectives:** Scan `.claude/docs/*/RETROSPECTIVE.md` for "Patterns to Reuse" and "Process Improvements" from prior features. Incorporate relevant lessons into the context report.
 
 2. **Architecture Context Agent** (`Explore` subagent)
    - Map relevant dependencies and integration points
@@ -233,6 +265,7 @@ After mentally drafting the spec, identify any remaining gaps:
 - Each question should explain *why* the answer matters for the spec
 - Gate condition: **"enough clarity to write an airtight spec"** — not a question count. Concretely: you can answer (a) what success looks like, (b) what the main edge cases are, (c) what the acceptance criteria are, and (d) what the implementation phases are
 - **Backstop:** If after 5 rounds of questions no new critical requirements have emerged, draft the spec with explicit assumptions for any remaining ambiguities and present to the user: "Proceed with these assumptions, or clarify further?"
+- **Autonomy shortcut:** In `autonomous` mode, if Phase 0 exploration + the user's initial description satisfies all four gate conditions above, skip Phase 1 entirely. Draft the spec with explicit assumptions and present it in Phase 2d for approval. Note skipped discovery in CHECKPOINT.md.
 
 ---
 
@@ -410,6 +443,20 @@ AskUserQuestion:
 └─────────────────────────────────────────────────────────┘
 ```
 
+### Background Quality Signals
+
+**Purpose:** Catch issues early without waiting for explicit test gates. These run continuously during Phase 3, providing fast feedback in parallel with TDD micro-cycles.
+
+If the project supports any of the following, start them as background watchers at the beginning of Phase 3 (before the first micro-cycle):
+
+- **Type-checking / compilation watch:** `tsc --watch`, `cargo check`, or equivalent. Catches type errors immediately as files are saved, before the next explicit test run.
+- **Linting watch:** `eslint --watch`, `ruff watch`, or equivalent. Catches style violations and common errors incrementally.
+- **Background test runner:** `pytest-watch`, `jest --watch`, `cargo-nextest` in watch mode. Provides near-instant feedback on test results after each file save.
+
+These are **advisory signals**, not gates. A background type error does not block the current substep — but it should be investigated before the next explicit test run (3b/3d). Background watchers reduce the cost of the Red→Green loop by surfacing errors seconds after they're introduced, rather than minutes later during a full test run.
+
+**Cleanup:** Stop background watchers when Phase 3 completes (before Phase 4) to avoid interference with adversarial review tooling.
+
 ### For Each Implementation Phase in SPEC.md:
 
 #### 3a: Write Failing Tests
@@ -438,6 +485,8 @@ Run the **full** test suite. All tests — new and existing — must pass.
 
 **Micro-cycle loop:** If more tests remain in this phase's "Tests to Write First" list, return to **3a** for the next micro-cycle. Only proceed to **3e** (Refactor) when all tests for this phase have been written and pass.
 
+**Micro-cycle pipelining (optional optimization):** While waiting for 3d test results, you may begin _drafting_ the next micro-cycle's test cases (3a) in a scratch buffer — but do NOT commit them to the test file until 3d confirms Green. This overlaps think time with execution time without violating Red-Before-Green discipline. If 3d reveals failures, discard the draft and fix the implementation first.
+
 #### 3e: Refactor
 
 Clean up the implementation:
@@ -463,6 +512,8 @@ Re-run the full test suite after refactoring.
 - **Git checkpoint:** Create a commit for this phase's work: `git add` the relevant files (implementation + tests + updated spec docs), then commit with message: `feat([feature-name]): phase N — [phase name]`. These per-phase commits can be squashed later if desired.
 - If another implementation phase exists, use `TaskUpdate` to mark the **next** phase task as `in_progress` and move to it
 - If this was the last implementation phase, all phase tasks should be `completed` — proceed to Phase 4
+
+**Phase 3→4 pre-staging (optimization):** When completing the _last_ implementation phase (3f), stop background quality watchers and begin pre-staging Phase 4 while the final git checkpoint commits. Specifically: stage the diff for review (`git diff origin/main..HEAD > /tmp/phase4-prep.patch`) and begin reading the current SPEC.md and CHECKLIST.md to prepare the adversarial review context. This overlaps Phase 4's setup I/O with Phase 3's finalization, reducing the wall-clock gap between implementation and review.
 
 ★ Insight ─────────────────────────────────────
 As you implement, provide insights about:
@@ -680,6 +731,44 @@ Present to the developer:
 
 **Cleanup:** Update CHECKPOINT.md status to `completed`. Remove only the `<!-- new-feature-vdd: [feature-name] -->` breadcrumb for the current feature from the project's CLAUDE.md (do not remove breadcrumbs for other shelved features). Use line-level insert/replace/delete for breadcrumb lines only; never overwrite CLAUDE.md wholesale.
 
+### 5f: Feature Retrospective
+
+**Purpose:** Capture process insights to improve future feature workflows. This step supports cross-feature learning — each completed feature contributes data that makes the next one smoother.
+
+Write `.claude/docs/[feature-name]/RETROSPECTIVE.md`:
+
+```markdown
+# Retrospective: [Feature Name]
+
+## Process Metrics
+- **Total phases:** N
+- **Spec revisions:** N (reasons: ...)
+- **Convergence iterations:** N
+- **CRITICAL findings fixed:** N
+- **IMPORTANT findings fixed:** N
+- **Autonomy mode used:** guided/supervised/autonomous
+
+## What Went Well
+- [Pattern or decision that saved time or prevented issues]
+
+## What Surprised Us
+- [Spec assumptions that were wrong and why]
+- [Edge cases discovered during implementation that the spec missed]
+- [Convergence findings that revealed systemic issues]
+
+## Patterns to Reuse
+- [Reusable patterns, utilities, or approaches discovered]
+- [Testing strategies that worked well]
+
+## Process Improvements
+- [What would make the next feature faster or higher quality]
+- [Gates that were too strict or too loose for this feature's risk level]
+```
+
+In `supervised`/`autonomous` mode, generate the retrospective automatically from CHECKPOINT.md history, the Iteration Log, and convergence data. In `guided` mode, present a draft and ask the developer for additions.
+
+**Cross-feature value:** Future Phase 0 explorations should check for existing `RETROSPECTIVE.md` files in `.claude/docs/*/` to inherit lessons learned. Patterns flagged in "Patterns to Reuse" are high-value signals for the Pattern Discovery Agent.
+
 ---
 
 ## Exit Protocol (Restart / Shelve / Abandon)
@@ -735,12 +824,17 @@ AskUserQuestion:
 
 ```
 /new-feature-vdd [brief description]
+/new-feature-vdd --autonomy supervised [brief description]
+/new-feature-vdd --autonomy autonomous [brief description]
 ```
 
+**Flags:**
+- `--autonomy <mode>` — Set the autonomy level: `guided` (default), `supervised`, or `autonomous`. See Autonomy Modes for details.
+
 **Examples:**
-- `/new-feature-vdd user search preferences endpoint`
-- `/new-feature-vdd add export to PDF functionality`
-- `/new-feature-vdd refactor auth middleware to support OAuth`
+- `/new-feature-vdd user search preferences endpoint` — guided mode (default, maximum human oversight)
+- `/new-feature-vdd --autonomy supervised add export to PDF functionality` — fewer human gates, auto-advance on clean passes
+- `/new-feature-vdd --autonomy autonomous refactor auth middleware to support OAuth` — spec approval only, auto-converge when clean
 
 ---
 
@@ -757,6 +851,7 @@ AskUserQuestion:
 | PR Handoff | `/deslop-around:deslop-around apply` → `/polish` | Mechanical sweep then semantic sweep before developer reviews each PR (multi-PR only) |
 | 5a | `/deslop-around:deslop-around apply` → `/polish` | Mechanical sweep then semantic sweep before completion (single-PR or final PR) |
 | 5d | `/git-review --quick` (conditional) | Post-convergence sanity check only — never used for convergence evidence |
+| 5f | `RETROSPECTIVE.md` generation | Cross-feature learning — captures process metrics, patterns, and improvements |
 
 ---
 
