@@ -100,7 +100,7 @@ Phase 0 → 1 → 2 (spec + review gate) → 3 (TDD per phase) → 4 (adversaria
 
 ### 2a: Architecture Design
 
-1. **Derive feature slug** from description (lowercase, hyphens, drop only articles/prepositions). Collision check: if `.claude/docs/[slug]/` exists from a prior completed/abandoned workflow, append `-v2`.
+1. **Derive feature slug** from description (lowercase, hyphens, drop only articles/prepositions). Collision check: if `.claude/docs/[slug]/` exists from a prior workflow (completed, abandoned, or shelved), append `-v2`.
 2. **Initialize state:** Create `.claude/docs/[slug]/`, write CHECKPOINT.md (Phase: 2, Substep: 2a, Status: active), write CLAUDE.md breadcrumb.
 3. **Persist exploration:** Write `.claude/docs/[slug]/EXPLORATION.md` summarizing Phase 0 findings + Phase 1 requirements.
 4. **Architecture blueprint:** Launch `feature-dev:code-architect` (or `Plan` for Light tier) with exploration findings + requirements.
@@ -111,7 +111,7 @@ Phase 0 → 1 → 2 (spec + review gate) → 3 (TDD per phase) → 4 (adversaria
 
 Update CHECKPOINT.md: Substep: 2b.
 
-Create `.claude/docs/[slug]/plans/<YYYYMMDD-HHMMSS>/SPEC.md`.
+Create `.claude/docs/[slug]/plans/<YYYYMMDD-HHMMSS>/SPEC.md`. Update CHECKPOINT.md `Spec Version` to point to this timestamp directory — this is the baseline for conditional re-reads, compaction recovery, and the spec feedback loop.
 
 **SPEC.md structure:** Follow the template in `new-feature.md` Phase 4 (SPEC.md structure section). Add these **TDD-specific additions** to each Implementation Phase:
 - `#### Tests to Write First` — test descriptions with impact tier (HIGH/MEDIUM/LOW per `/polish` Phase 3 definitions). Target ≥50% HIGH, ≤25% LOW.
