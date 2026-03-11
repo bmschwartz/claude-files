@@ -144,7 +144,7 @@ Update CHECKPOINT.md: Substep: 2d.
 
 Present spec to user with options: **Run /plan-review (Recommended)** | **Approve and start** | **I have changes**.
 
-- `/plan-review`: invoke, then re-read PLAN.md for updated version path. Re-prompt gate.
+- `/plan-review`: invoke with `<project-root> .claude/docs/[slug]` (both positional args required — see `plan-review.md`). After it completes, re-read PLAN.md for updated version path and update CHECKPOINT.md `Spec Version` to the new timestamp directory. Re-prompt gate.
 - Changes: incorporate, update docs, re-prompt gate.
 - Approved: `TaskCreate` for each implementation phase. Proceed to Phase 3.
 
@@ -232,20 +232,24 @@ Locate REVIEW_SUMMARY.md using `/git-review`'s review output structure (see `git
 
 **Convergence test:**
 - **Only MINOR/POTENTIAL/deferred-IMPORTANT remain → Converged.** In `autonomous` mode, auto-proceed to Phase 5. In `supervised` mode, auto-proceed after the first iteration if no CRITICAL/IMPORTANT remain. In `guided` mode, ask developer before proceeding.
-- **CRITICAL or undeferred IMPORTANT remain →** proceed to 4c.
+- **CRITICAL or undeferred IMPORTANT remain →** proceed to **4d** (convergence check) before fixing.
 
 ### 4c: Fix + Re-Review Loop
 Fix CRITICAL findings. Fix IMPORTANT unless developer explicitly deferred. **TDD applies to behavioral fixes:** changed logic, new code paths, altered API surface → write regression test first, verify Red, implement, verify Green. Non-behavioral fixes (formatting, naming, docs, dead code) → apply directly. When uncertain, write the test.
 
 Run full test suite. If fixes require spec changes → Spec Feedback Loop → new implementation phase → return to 4a (costs 2 convergence iterations as spec-churn deterrent). A second spec issue during convergence escalates to the developer regardless of iteration count.
 
-Run `/git-review --external` for re-review (never `--quick` for convergence — quick mode produces no REVIEW_SUMMARY.md, breaking the triage protocol). Increment Convergence Iteration. **Return to 4b** to triage the new REVIEW_SUMMARY.md — the convergence test there determines whether to proceed to Phase 5 or continue fixing.
+Run `/git-review --external` for re-review (never `--quick` for convergence — quick mode produces no REVIEW_SUMMARY.md, breaking the triage protocol). Increment Convergence Iteration. **Return to 4b** to triage the new REVIEW_SUMMARY.md — the convergence test there determines whether to converge (Phase 5) or route through 4d for the convergence cap/quality check before continuing fixes.
 
 ### 4d: Convergence Check
 
+**Reached from 4b** when CRITICAL or undeferred IMPORTANT findings remain. This step enforces quality trends and iteration caps before returning to 4c for fixes.
+
 **Quality signal:** Track CRITICAL + IMPORTANT count per iteration. Update CHECKPOINT.md `Convergence Trend`: `improving` if count decreased, `stalled` if unchanged, `degrading` if increased (leave `N/A` until iteration ≥1). **If stalled or degrading, escalate immediately** — don't wait for the cap: "Review quality not converging — [N] issues unchanged. Fix approach may need rethinking."
 
-**Iteration cap:** Standard: 3 iterations. Critical tier: 2 iterations. Cap triggers when Convergence Iteration ≥ cap (not exactly equal — spec re-entries can cause the counter to skip values). When cap reached, present options: **Fix and review again** (extends cap by 1) | **Accept remaining issues** (document and proceed) | **I'll handle manually** (handoff — update CHECKPOINT.md status to `completed` with `Completion Mode: manual-handoff`, remove breadcrumb, present summary, stop orchestration).
+**Iteration cap:** Standard: 3 iterations. Critical tier: 2 iterations. Cap triggers when Convergence Iteration ≥ cap (not exactly equal — spec re-entries can cause the counter to skip values). When cap reached, present options: **Fix and review again** (extends cap by 1) | **Accept remaining issues** (document and proceed) | **I'll handle manually** (handoff — update CHECKPOINT.md status to `completed` with `Completion Mode: manual-handoff`, remove breadcrumb, present summary, stop orchestration). **If CRITICAL findings remain at cap:** the "Accept remaining issues" option requires the developer to explicitly acknowledge each unresolved CRITICAL by name — list them in the prompt. This satisfies the guardrail ("CRITICAL findings always block convergence") by requiring explicit human sign-off rather than silent acceptance.
+
+**If not capped and not escalated → proceed to 4c** to fix remaining issues.
 
 **Gate:** Only MINOR/POTENTIAL/deferred-IMPORTANT remain, OR developer explicitly accepts remaining issues.
 
@@ -294,7 +298,7 @@ Present: what was built, files changed, test coverage, TDD compliance, convergen
 - [Additions to CLAUDE.md — e.g., "Convention: always validate X before Y"]
 ```
 
-Source data: CHECKPOINT.md → metrics; SPEC.md Iteration Log → revision count + surprises; REVIEW_SUMMARY.md → findings counts + "What Went Well." In `supervised`/`autonomous` mode, generate automatically. In `guided` mode, present draft and ask developer for additions.
+Source data: CHECKPOINT.md → metrics; SPEC.md Iteration Log → revision count + surprises; REVIEW_SUMMARY.md → findings counts + "What Went Well." **Light tier:** Phase 4 is skipped and 5d uses `--quick` (no REVIEW_SUMMARY.md) — source findings data from the `--quick` console output instead; omit convergence metrics from the retrospective. In `supervised`/`autonomous` mode, generate automatically. In `guided` mode, present draft and ask developer for additions.
 
 After writing, present any "Suggested Rules" entries to the developer for approval before adding to CLAUDE.md — **this is a hard gate in all autonomy modes** to prevent instruction creep. This closes the compounding loop: the project gets smarter with each feature, but only with human curation.
 
