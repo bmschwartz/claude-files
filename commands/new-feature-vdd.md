@@ -23,7 +23,7 @@ Determine tier at the start. When ambiguous, start Light and escalate if complex
 | Mode | Human Gates | Effect |
 |------|-------------|--------|
 | `guided` | Every phase transition + convergence iterations + completion | Maximum oversight — every gate asks |
-| `supervised` | Spec approval (2d) + convergence acceptance (4e) | Auto-advance on clean passes; minor spec clarifications proceed without asking |
+| `supervised` | Spec approval (2d) + convergence acceptance (4d) | Auto-advance on clean passes; minor spec clarifications proceed without asking |
 | `autonomous` | Spec approval (2d) only | Auto-converge when only MINOR/POTENTIAL remain; skip completion review prompt |
 
 > **Guardrail:** CRITICAL findings in Phase 4 always block convergence regardless of autonomy mode. `--autonomy` reduces ceremony, not safety. Phase 2d (spec approval) requires human approval in all modes.
@@ -239,11 +239,11 @@ Fix CRITICAL findings. Fix IMPORTANT unless developer explicitly deferred. **TDD
 
 Run full test suite. If fixes require spec changes → Spec Feedback Loop → new implementation phase → return to 4a (costs 2 convergence iterations as spec-churn deterrent). A second spec issue during convergence escalates to the developer regardless of iteration count.
 
-Run `/git-review --external` for re-review (never `--quick` for convergence — quick mode produces no REVIEW_SUMMARY.md, breaking the triage protocol). Increment Convergence Iteration.
+Run `/git-review --external` for re-review (never `--quick` for convergence — quick mode produces no REVIEW_SUMMARY.md, breaking the triage protocol). Increment Convergence Iteration. **Return to 4b** to triage the new REVIEW_SUMMARY.md — the convergence test there determines whether to proceed to Phase 5 or continue fixing.
 
 ### 4d: Convergence Check
 
-**Quality signal:** Track CRITICAL + IMPORTANT count per iteration. **If count is not decreasing between iterations, escalate immediately** — don't wait for the cap: "Review quality not converging — [N] issues unchanged. Fix approach may need rethinking."
+**Quality signal:** Track CRITICAL + IMPORTANT count per iteration. Update CHECKPOINT.md `Convergence Trend`: `improving` if count decreased, `stalled` if unchanged, `degrading` if increased (leave `N/A` until iteration ≥1). **If stalled or degrading, escalate immediately** — don't wait for the cap: "Review quality not converging — [N] issues unchanged. Fix approach may need rethinking."
 
 **Iteration cap:** Standard: 3 iterations. Critical tier: 2 iterations. Cap triggers when Convergence Iteration ≥ cap (not exactly equal — spec re-entries can cause the counter to skip values). When cap reached, present options: **Fix and review again** (extends cap by 1) | **Accept remaining issues** (document and proceed) | **I'll handle manually** (handoff — update CHECKPOINT.md status to `completed` with `Completion Mode: manual-handoff`, remove breadcrumb, present summary, stop orchestration).
 
