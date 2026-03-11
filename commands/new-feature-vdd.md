@@ -231,8 +231,9 @@ Locate REVIEW_SUMMARY.md using `/git-review`'s review output structure (see `git
 - **IMPORTANT findings** skipped during interactive prompts count as deferred — record in CHECKPOINT.md Deferred Issues and document in the completion summary. Deferred IMPORTANT does not block convergence.
 
 **Convergence test:**
+- Record CRITICAL + IMPORTANT count for the current iteration in CHECKPOINT.md Notes (e.g., `Iteration 0 findings: N`). This baseline is needed for trend comparison in 4d.
 - **Only MINOR/POTENTIAL/deferred-IMPORTANT remain → Converged.** In `autonomous` mode, auto-proceed to Phase 5. In `supervised` mode, auto-proceed after the first iteration if no CRITICAL/IMPORTANT remain. In `guided` mode, ask developer before proceeding.
-- **CRITICAL or undeferred IMPORTANT remain →** if Convergence Iteration = 0, proceed directly to **4c** (first iteration — 4d checks are guaranteed no-ops). If Convergence Iteration ≥ 1, proceed to **4d** (convergence check) before fixing.
+- **CRITICAL or undeferred IMPORTANT remain →** if Convergence Iteration = 0, proceed directly to **4c** (first iteration — 4d trend/cap checks cannot fire yet). If Convergence Iteration ≥ 1, proceed to **4d** (convergence check) before fixing.
 
 ### 4c: Fix + Re-Review Loop
 Fix CRITICAL findings. Fix IMPORTANT unless developer explicitly deferred. **TDD applies to behavioral fixes:** changed logic, new code paths, altered API surface → write regression test first, verify Red, implement, verify Green. Non-behavioral fixes (formatting, naming, docs, dead code) → apply directly. When uncertain, write the test.
@@ -245,7 +246,7 @@ Run `/git-review --external` for re-review (never `--quick` for convergence — 
 
 **Reached from 4b** when CRITICAL or undeferred IMPORTANT findings remain. This step enforces quality trends and iteration caps before returning to 4c for fixes.
 
-**Quality signal:** Record CRITICAL + IMPORTANT count at every iteration (including iteration 0 — store the baseline in CHECKPOINT.md Notes as `Iteration 0 findings: N`). Update CHECKPOINT.md `Convergence Trend` starting at iteration 1: `improving` if count decreased vs. previous, `stalled` if unchanged, `degrading` if increased (leave `N/A` at iteration 0). **If stalled or degrading, escalate immediately** — don't wait for the cap: "Review quality not converging — [N] issues unchanged. Fix approach may need rethinking."
+**Quality signal:** Using the finding counts recorded in 4b (each iteration's CRITICAL + IMPORTANT count stored in CHECKPOINT.md Notes), update CHECKPOINT.md `Convergence Trend`: `improving` if count decreased vs. most recently recorded count (regardless of iteration number gaps from spec-churn penalties), `stalled` if unchanged, `degrading` if increased (leave `N/A` at iteration 0). **If stalled or degrading, escalate immediately** — don't wait for the cap: "Review quality not converging — [N] issues unchanged. Fix approach may need rethinking."
 
 **Iteration cap:** Standard: 3 iterations. Critical tier: 2 iterations. Cap triggers when Convergence Iteration ≥ cap (not exactly equal — spec re-entries can cause the counter to skip values). When cap reached, present options: **Fix and review again** (extends cap by 1) | **Accept remaining issues** (document and proceed) | **I'll handle manually** (handoff — update CHECKPOINT.md status to `completed` with `Completion Mode: manual-handoff`, remove breadcrumb, present summary, stop orchestration). **If CRITICAL findings remain at cap:** the "Accept remaining issues" option requires the developer to explicitly acknowledge each unresolved CRITICAL by name — list them in the prompt. This satisfies the guardrail ("CRITICAL findings always block convergence") by requiring explicit human sign-off rather than silent acceptance.
 
@@ -377,7 +378,7 @@ Triggered when implementation reveals SPEC.md is wrong or incomplete.
 3. **Minor clarification** (parameter naming, clarifying existing behavior, internal refactor): edit in place, add Iteration Log entry, proceed.
 4. **Default:** If unclear, treat as significant.
 5. Update CHECKLIST.md and tasks if phases changed.
-6. **Resume point:** Tests affected → 3a. Implementation approach only → 3c. Cosmetic/docs → current substep.
+6. **Resume point:** Tests affected (including changes that affect both tests and implementation) → 3a. Implementation approach only (no test changes needed) → 3c. Cosmetic/docs → current substep.
 7. **Circuit breaker:** >3 revisions in one phase → ask: continue | re-scope | return to Phase 2.
 
 ---
@@ -452,6 +453,7 @@ Written at Phase 2a (earliest slug exists). Removed on completion. Line-level ed
 | `Explore` / `feature-dev:code-explorer` | `general-purpose` subagent with same objectives |
 | `feature-dev:code-architect` | `Plan` subagent |
 | `/plan-review` | Skip; user reviews spec manually at 2d gate |
+| `/deslop-around` | Skip mechanical pass; `/polish` covers the semantic subset. Note skip in commit message. |
 | `/polish` | Inline cleanup: scan for dev artifact comments, low-value docstrings, LOW-impact tests. Commit before handoff. |
 | `/git-review` | Fresh `Explore`/`general-purpose` subagent with adversarial prompt, diff, and SPEC.md. Write to `.claude/reviews/<sanitized-branch>/fallback-<timestamp>/REVIEW_SUMMARY.md` (follow `git-review.md` sanitization rules). Update REVIEW.md. Present findings interactively (Apply/Skip). Convergence loop still applies. |
 | `agent` CLI (for `--external`) | Run `/git-review` without `--external`. Note downgrade in CHECKPOINT.md Notes. |
