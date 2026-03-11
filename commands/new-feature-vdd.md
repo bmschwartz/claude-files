@@ -1,6 +1,6 @@
 # Feature Development with TDD + Adversarial Convergence
 
-> **v2.0.0** · Restructured for token efficiency. Core flow + appendices. Merged from `new-feature.md` and `vdd.md`.
+> **v2.1.0** · Adds autonomy modes (tied to tiers), structured RETROSPECTIVE.md, cross-feature retrospective inheritance. Cherry-picked from PR #1.
 
 ## Overview
 
@@ -10,11 +10,21 @@ Orchestrates feature development: **explore → spec → test-first → adversar
 
 Determine tier at the start. When ambiguous, start Light and escalate if complexity emerges.
 
-| Tier | When | Phases | Adversarial |
-|------|------|--------|-------------|
-| **Light** | ≤3 files, no new modules, low risk | 0 (quick) → 1 (1 round) → 2 (minimal) → 3 → 5 | Skip Phase 4; run `/git-review --quick` in 5d instead |
-| **Standard** | Typical feature | All phases | Full convergence |
-| **Critical** | Security, data model, public API, financial | All phases + spec adversary (2b) | Full convergence + tighter cap (2 iterations before escalation) |
+| Tier | When | Phases | Adversarial | Default Autonomy |
+|------|------|--------|-------------|------------------|
+| **Light** | ≤3 files, no new modules, low risk | 0 (quick) → 1 (1 round) → 2 (minimal) → 3 → 5 | Skip Phase 4; run `/git-review --quick` in 5d instead | `autonomous` |
+| **Standard** | Typical feature | All phases | Full convergence | `supervised` |
+| **Critical** | Security, data model, public API, financial | All phases + spec adversary (2b) | Full convergence + tighter cap (2 iterations before escalation) | `guided` |
+
+**Autonomy levels** control human oversight at gates. Each tier defaults to its natural level; override with `--autonomy <mode>`:
+
+| Mode | Human Gates | Effect |
+|------|-------------|--------|
+| `guided` | Every phase transition + convergence iterations + completion | Maximum oversight — every gate asks |
+| `supervised` | Spec approval (2d) + convergence acceptance (4e) | Auto-advance on clean passes; minor spec clarifications proceed without asking |
+| `autonomous` | Spec approval (2d) only | Auto-converge when only MINOR/POTENTIAL remain; skip completion review prompt |
+
+> **Guardrail:** CRITICAL findings in Phase 4 always block convergence regardless of autonomy mode. `--autonomy` reduces ceremony, not safety. Phase 2d (spec approval) requires human approval in all modes.
 
 ### Invariants (apply at all tiers)
 
@@ -54,7 +64,7 @@ Phase 0 → 1 → 2 (spec + review gate) → 3 (TDD per phase) → 4 (adversaria
 
 **Launch parallel agents** (`Agent` tool):
 
-1. **Pattern Discovery** (`Explore`) — similar features, conventions, reusable utilities
+1. **Pattern Discovery** (`Explore`) — similar features, conventions, reusable utilities. Also scan `.claude/docs/*/RETROSPECTIVE.md` for "Patterns to Reuse" and "Suggested Rules" from prior features — incorporate relevant lessons into the context report. (Opportunistic: skip if no retrospective files exist.)
 2. **Architecture Context** (`Explore`) — dependencies, integration points, test frameworks, config patterns
 3. **Deep Code Explorer** (`feature-dev:code-explorer`) — **Standard/Critical only.** Cross-subsystem execution paths, architecture layers, dependency chains
 
@@ -250,7 +260,31 @@ If any code changes after last review → run `/git-review --quick`. CRITICAL fo
 ### 5e: Summary + Retrospective
 Present: what was built, files changed, test coverage, TDD compliance, convergence status, deferred issues, spec changes, next steps.
 
-**Retrospective (compounding improvement):** Review recurring findings from Phase 4 (or 5d for Light). Identify patterns that appeared 2+ times across iterations. Suggest additions to project CLAUDE.md or rules files — e.g., "Convention: always validate X before Y" or "Pattern: use shared fixture for Z." This closes the compounding loop: the project gets smarter with each feature.
+**Retrospective — write `.claude/docs/[slug]/RETROSPECTIVE.md`:**
+
+```markdown
+# Retrospective: [Feature Name]
+
+## Metrics
+- Phases: N | Spec revisions: N | Convergence iterations: N
+- Findings fixed: N CRITICAL, N IMPORTANT | Autonomy: <mode>
+
+## What Went Well
+- [Patterns or decisions that saved time or prevented issues]
+
+## Surprises
+- [Spec assumptions that were wrong; edge cases the spec missed]
+
+## Patterns to Reuse
+- [Reusable patterns, utilities, testing strategies discovered]
+
+## Suggested Rules
+- [Additions to CLAUDE.md — e.g., "Convention: always validate X before Y"]
+```
+
+Source data: CHECKPOINT.md → metrics; SPEC.md Iteration Log → revision count + surprises; REVIEW_SUMMARY.md → findings counts + "What Went Well." In `supervised`/`autonomous` mode, generate automatically. In `guided` mode, present draft and ask developer for additions.
+
+After writing, apply any "Suggested Rules" entries as CLAUDE.md additions (with developer approval in `guided` mode). This closes the compounding loop: the project gets smarter with each feature.
 
 **Cleanup:** CHECKPOINT.md status → `completed`. Remove this feature's CLAUDE.md breadcrumb (preserve others).
 
@@ -260,9 +294,12 @@ Present: what was built, files changed, test coverage, TDD compliance, convergen
 
 ```
 /new-feature-vdd [brief description]
+/new-feature-vdd --autonomy <guided|supervised|autonomous> [brief description]
 ```
 
-Examples: `/new-feature-vdd user search preferences endpoint` · `/new-feature-vdd add PDF export` · `/new-feature-vdd refactor auth for OAuth`
+Autonomy defaults to tier (Light→autonomous, Standard→supervised, Critical→guided). Override with `--autonomy`.
+
+Examples: `/new-feature-vdd user search preferences endpoint` · `/new-feature-vdd --autonomy guided add PDF export` · `/new-feature-vdd refactor auth for OAuth`
 
 ---
 
@@ -279,6 +316,7 @@ Examples: `/new-feature-vdd user search preferences endpoint` · `/new-feature-v
 | 4 | `/git-review --external` | Adversarial review + convergence |
 | 5a | `/deslop-around` → `/polish` | Cleanup passes |
 | 5d | `/git-review --quick` | Post-convergence sanity check |
+| 5e | `RETROSPECTIVE.md` generation | Cross-feature learning — metrics, patterns, suggested rules |
 
 ---
 
@@ -359,6 +397,7 @@ Convergence Trend: [N/A | improving | stalled | degrading]
 Tests Completed: 0 of N
 Test Command: pytest -xvs
 Spec Version: plans/<YYYYMMDD-HHMMSS>/
+Autonomy Mode: supervised
 Deferred Issues: none
 Notes: [1-2 sentences recovery context]
 ```
