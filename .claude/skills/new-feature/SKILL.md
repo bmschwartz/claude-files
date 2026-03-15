@@ -227,7 +227,7 @@ Triggered when implementation reveals SPEC.md is wrong or incomplete. Read [refe
 For integration details with `/git-review` and `/plan-review`, read [references/integration-notes.md](references/integration-notes.md).
 
 ### 4a: Initial Review
-Update CHECKPOINT.md: Phase: 4. **First entry:** set Convergence Iteration: 0. **Spec-triggered re-entry** from 4c: add +1 penalty to the counter before reviewing (spec churn during convergence is expensive — one spec-triggered cycle costs 2 iterations total). Run `/git-review --external`.
+Update CHECKPOINT.md: Phase: 4. **First entry:** set Convergence Iteration: 0. Run `/git-review --external` (full scope). **Spec-triggered re-entry** from 4c: add +1 penalty to the counter before reviewing (spec churn during convergence is expensive — one spec-triggered cycle costs 2 iterations total). Run `/git-review --external --changed-only` (scoped to files changed since last review round).
 
 `/git-review` applies its standard review criteria. **VDD-specific additions** for the adversary to emphasize beyond standard criteria: spec compliance (every SPEC.md requirement has a traceable test+implementation pair), test necessity audit ("if this test were deleted, what production failure goes undetected?"), test impact classification per `/polish` Phase 3 tiers.
 
@@ -248,7 +248,7 @@ Fix CRITICAL findings. Fix IMPORTANT unless developer explicitly deferred. **TDD
 
 Run full test suite. If fixes require spec changes → Spec Feedback Loop → new implementation phase → return to 4a (costs 2 convergence iterations as spec-churn deterrent). **Note:** If the post-spec-reentry review converges (only MINOR/POTENTIAL remain in 4b), proceed to Phase 5 regardless of iteration count — the cap gates further fix cycles, not convergence that already succeeded. A second spec issue during convergence escalates to the developer regardless of iteration count.
 
-Run `/git-review --external` for re-review (never `--quick` for convergence — quick mode produces no REVIEW_SUMMARY.md, breaking the triage protocol). Increment Convergence Iteration. **Return to 4b** to triage the new REVIEW_SUMMARY.md — the convergence test there determines whether to converge (Phase 5) or route through 4d for the convergence cap/quality check before continuing fixes.
+Run `/git-review --external --changed-only` for re-review (scoped to files changed since last review round; if fixes touched >50% of files in scope, use full `/git-review --external` instead). Never use `--quick` for convergence — quick mode produces no REVIEW_SUMMARY.md, breaking the triage protocol. Increment Convergence Iteration. **Return to 4b** to triage the new REVIEW_SUMMARY.md — the convergence test there determines whether to converge (Phase 5) or route through 4d for the convergence cap/quality check before continuing fixes.
 
 ### 4d: Convergence Check
 
