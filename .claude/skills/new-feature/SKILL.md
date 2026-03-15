@@ -106,7 +106,7 @@ Phase 0 → 1 → 2 (spec + review gate) → 3 (TDD per phase) → 4 (adversaria
 
 ### 2a: Architecture Design
 
-1. **Derive feature slug** from description (lowercase, hyphens, drop only articles/prepositions). Collision check: if `.claude/docs/[slug]/` exists from a prior workflow (completed, abandoned, or shelved), append `-v2`.
+1. **Derive feature slug** from description (lowercase, hyphens, drop only articles/prepositions). Collision check: if `.claude/docs/[slug]/` exists from a prior workflow (completed, abandoned, or shelved), increment a numeric suffix (`-v2`, `-v3`, ...) until an unused directory is found. Cap at `-v9` — if all are taken, ask the user which existing workflow to abandon or shelve.
 2. **Initialize state:** Create `.claude/docs/[slug]/`, write CHECKPOINT.md (Phase: 2, Substep: 2a, Status: active), write CLAUDE.md breadcrumb. Read [references/context-resilience.md](references/context-resilience.md) for CHECKPOINT.md and breadcrumb formats.
 3. **Persist exploration:** Write `.claude/docs/[slug]/EXPLORATION.md` summarizing Phase 0 findings + Phase 1 requirements.
 4. **Architecture blueprint:** Launch `feature-dev:code-architect` (or `Plan` for Light tier) with exploration findings + requirements.
@@ -140,7 +140,7 @@ Update CHECKPOINT.md: Substep: 2c.
 
 Generate supporting documents **in parallel** — each reads from SPEC.md and its respective template from the [templates/](templates/) directory independently. Use multiple `Write` tool calls in a single message. TDD-specific modification to CHECKLIST.md: label groups within each phase as `#### Tests (complete before implementation)` and `#### Implementation (only after all tests pass)`.
 
-**Always:** CHECKLIST.md, README.md. **Conditionally:** KEY_DECISIONS.md (high-impact decisions only), PR_STRATEGY.md (multi-PR only — read [references/multi-pr-workflow.md](references/multi-pr-workflow.md) for details). **Not generated:** FIXTURES.md — SPEC.md's "Tests to Write First" sections serve as test data source of truth. **Light tier:** Skip KEY_DECISIONS.md and PR_STRATEGY.md; generate only CHECKLIST.md and README.md.
+**Always:** CHECKLIST.md, README.md. **Conditionally:** KEY_DECISIONS.md (high-impact decisions only), PR_STRATEGY.md (multi-PR only — read [references/multi-pr-workflow.md](references/multi-pr-workflow.md) for details). **Conditionally:** FIXTURES.md — generate only when SPEC.md contains explicit test fixture data (lookup tables, sample payloads, mock configurations) that would clutter the spec. If SPEC.md "Tests to Write First" sections are self-contained, skip FIXTURES.md. **Light tier:** Skip KEY_DECISIONS.md and PR_STRATEGY.md; generate only CHECKLIST.md and README.md.
 
 **Generate PLAN.md last** (after all other documents) at doc root linking to current version, since it references the other documents.
 

@@ -4,7 +4,7 @@
 
 ## Startup Breadcrumb Handling (Phase 0)
 
-Read CLAUDE.md for `<!-- new-feature: ... -->` breadcrumbs.
+Read CLAUDE.md for `<!-- new-feature: ... -->` breadcrumbs. Also check for legacy `<!-- new-feature-vdd: ... -->` breadcrumbs from the prior `/new-feature-vdd` command. Treat them identically — same resume/shelve/abandon options apply. If both legacy and current breadcrumbs exist for the same slug, prefer the current format and offer to clean up the legacy marker.
 
 **Active breadcrumb found:** Prior session interrupted. Ask: Resume (Recommended) | Start fresh | Abandon.
 - **Resume:** Read CHECKPOINT.md for substep. If missing, ask user: "Start fresh, abandon, or recover from other artifacts?" Re-read only artifacts that exist at the recorded substep. Jump directly — skip Phase 0/1.
