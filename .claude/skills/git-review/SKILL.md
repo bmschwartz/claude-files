@@ -127,9 +127,9 @@ For thorough mode, create the review round directory. See [references/output-str
 
 Launch all reviewers **in parallel** (`run_in_background: true`) in a single message:
 
-**Internal reviewers (always):** Launch `<COUNT>` (default 1) `feature-dev:code-reviewer` agents (`model: "opus"`). Each receives: the full diff, codebase patterns from Phase 0, CLAUDE.md rules, feature spec docs (if available), PR metadata (if `--pr`). Include: "Only report issues with HIGH confidence. Tag uncertain issues as 'Potential Issue'. Return your complete review as your final message in markdown — do NOT attempt to write files." These reviewers have native codebase access (can read files, explore the project).
+**Internal reviewers (always):** Launch `<COUNT>` (default 1) `Explore` agents (`model: "opus"`, `subagent_type: "Explore"`). Each receives: the full diff, codebase patterns from Phase 0, CLAUDE.md rules, feature spec docs (if available), PR metadata (if `--pr`). Include: "Only report issues with HIGH confidence. Tag uncertain issues as 'Potential Issue'. Return your complete review as your final message in markdown." These reviewers have native codebase access (Glob, Grep, Read) but cannot write files — the orchestrator captures output.
 
-**IMPORTANT:** `feature-dev:code-reviewer` does NOT have the Write tool. After each completes, the **orchestrator** must capture its output and write it to `${ROUND_DIR}/review-claude-code-<N>.md`.
+**IMPORTANT:** `Explore` agents do NOT have the Write tool. After each completes, the **orchestrator** must capture its output and write it to `${ROUND_DIR}/review-claude-code-<N>.md`.
 
 **External reviewers (with `--external`):** Also launch `<COUNT>` `code-review-executor` agents (from `.claude/agents/code-review-executor.md`) per external model. Each runs the `agent` CLI with the model, `_review-prompt.md`, `_diff.patch`, and project root. Output: `${ROUND_DIR}/review-<MODEL>-<N>.md`. If CLI fails, retry once; if it fails again, write error report to output file.
 
@@ -229,7 +229,7 @@ If reviewing changes from a `/new-feature` workflow, follow Step 0b to discover 
 | Agent | Purpose | When used | Model |
 |-------|---------|-----------|-------|
 | `Explore` | Codebase pattern discovery (Phase 0) | Always (thorough mode) | `opus` |
-| `feature-dev:code-reviewer` | Built-in Claude code reviewer (× count) | Always (thorough mode) | `opus` |
+| `Explore` | Built-in Claude code reviewer (× count, read-only) | Always (thorough mode) | `opus` |
 
 ### Custom (from `.claude/agents/`)
 
