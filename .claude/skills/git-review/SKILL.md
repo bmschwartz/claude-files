@@ -12,7 +12,7 @@ allowed-tools: Read, Grep, Glob, Bash(git diff*, git log*, git branch*, git rev-
 
 > **v3.1.0**
 
-A comprehensive code review command that uses built-in Claude `feature-dev:code-reviewer` agents by default. Optionally enables multi-model review with external AI models (`--external`) for cross-model agreement analysis. Understands codebase patterns and interactively applies fixes.
+A comprehensive code review command that uses built-in Claude `Explore` agents (opus) for code review by default. Optionally enables multi-model review with external AI models (`--external`) for cross-model agreement analysis. Understands codebase patterns and interactively applies fixes.
 
 ## Command Usage
 
@@ -252,8 +252,8 @@ If reviewing changes from a `/new-feature` workflow, follow Step 0b to discover 
 
 ### Mode × Agent Matrix
 
-| Mode | `Explore` | `code-reviewer` | `code-review-executor` | `code-review-synthesizer` |
-|------|-----------|-----------------|------------------------|--------------------------|
+| Mode | `Explore` (discovery) | `Explore` (code-reviewer) | `code-review-executor` | `code-review-synthesizer` |
+|------|----------------------|--------------------------|------------------------|--------------------------|
 | default (internal) | ✓ background | ✓ background (× count) | — | ✓ foreground |
 | --external | ✓ background | ✓ background (× count) | ✓ background (per model × count) | ✓ foreground |
 | --quick | — | — | — | — |
