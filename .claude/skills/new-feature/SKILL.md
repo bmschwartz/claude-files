@@ -192,6 +192,8 @@ Write the **minimum** to pass failing tests. No gold-plating.
 ### 3d: Verify Green
 Run **full** test suite. If existing tests broke, fix implementation (not old tests, unless spec explicitly changed that behavior). Update CHECKPOINT.md `Tests Completed` to reflect tests written so far in the current implementation phase. If more tests remain in this phase → return to 3a.
 
+**Early stability signal:** If 3 consecutive micro-cycles achieve Green on first test run (no Red→fix iterations needed), the implementation is tracking cleanly. For remaining tests in the current phase: batch write all remaining tests at once (up to 5), implement, verify Green. If any fail, return to normal 1-3 test micro-cycles. This does NOT skip the Red check — tests are still written before implementation. It batches the cycle size when confidence is high.
+
 ### 3e: Refactor
 Address SPEC.md Refactoring Notes. Extract duplication, improve naming, apply Phase 0 patterns. Re-run full suite.
 
