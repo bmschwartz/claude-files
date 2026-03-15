@@ -138,11 +138,11 @@ Create `.claude/docs/[slug]/plans/<YYYYMMDD-HHMMSS>/SPEC.md`. Update CHECKPOINT.
 
 Update CHECKPOINT.md: Substep: 2c.
 
-Generate supporting documents by reading the relevant template from the [templates/](templates/) directory for each document being generated. TDD-specific modification to CHECKLIST.md: label groups within each phase as `#### Tests (complete before implementation)` and `#### Implementation (only after all tests pass)`.
+Generate supporting documents **in parallel** — each reads from SPEC.md and its respective template from the [templates/](templates/) directory independently. Use multiple `Write` tool calls in a single message. TDD-specific modification to CHECKLIST.md: label groups within each phase as `#### Tests (complete before implementation)` and `#### Implementation (only after all tests pass)`.
 
 **Always:** CHECKLIST.md, README.md. **Conditionally:** KEY_DECISIONS.md (high-impact decisions only), PR_STRATEGY.md (multi-PR only — read [references/multi-pr-workflow.md](references/multi-pr-workflow.md) for details). **Not generated:** FIXTURES.md — SPEC.md's "Tests to Write First" sections serve as test data source of truth. **Light tier:** Skip KEY_DECISIONS.md and PR_STRATEGY.md; generate only CHECKLIST.md and README.md.
 
-**Generate PLAN.md** at doc root linking to current version.
+**Generate PLAN.md last** (after all other documents) at doc root linking to current version, since it references the other documents.
 
 ### 2d: Review Gate
 
