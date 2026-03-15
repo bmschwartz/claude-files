@@ -2,7 +2,7 @@
 name: plan-review
 description: Multi-model review and synthesis of implementation plans. Orchestrates parallel AI reviews of spec documents, synthesizes findings, gathers user input, and updates plan documents. Use when the user wants to review a feature plan, validate a specification, or get multi-model analysis before implementation. Typically invoked from /new-feature during the spec approval phase.
 disable-model-invocation: true
-argument-hint: "<project-root> <plan-root> [--models <list>] [--count <N>] [--dry-run]"
+argument-hint: "<project-root> <plan-root> [--models <list>] [--count <N>] [--changed-only] [--dry-run]"
 ---
 
 # Plan Review: Multi-Model Analysis & Synthesis
@@ -25,6 +25,7 @@ This process is iterative — the user may choose to run another review cycle af
 **Optional flags:**
 - `--models <comma-separated-list>` — Override default review models
 - `--count <N>` — Number of `plan-reviewer` subagents per model (default: `2`)
+- `--changed-only` — Scope review to plan documents modified since the last review round. Uses the most recent `REVIEW_SUMMARY.md` timestamp as baseline. Falls back to full review if no prior round exists. Useful for iterative rounds (Step 8 loop-back).
 - `--dry-run` — Show what would be reviewed without running
 
 **Built-in reviewers:** `--count` Opus subagents always run via Agent tool (no `agent` CLI required). Native codebase access.
@@ -37,11 +38,30 @@ Parse `$ARGUMENTS` by splitting on whitespace. Extract flags first, then treat r
 
 ## Review Output Structure
 
-See [references/output-structure.md](references/output-structure.md) for the full directory layout and file reference.
+Each review round gets its own timestamped directory under `<PLAN_ROOT>/reviews/`. A `REVIEW.md` file at the plan root links to the most recent round.
+
+```
+<PLAN_ROOT>/
+├── PLAN.md                              # → current plan version
+├── REVIEW.md                            # → most recent review round
+├── plans/
+│   └── <PLAN_TIMESTAMP>/
+└── reviews/
+    └── <ROUND_TIMESTAMP>/
+        ├── _review-prompt.md            # Prompt used (audit trail)
+        ├── review-<MODEL>-<N>.md        # Raw review outputs (immutable)
+        └── REVIEW_SUMMARY.md            # Synthesis (updated with apply/skip status)
+```
+
+`<MODEL>`: model identifier with `/` → `-` (e.g., `opus-4.6-thinking`). Built-in reviewers use `opus-internal`. `<N>`: 1-indexed instance number. `<TIMESTAMP>`: `YYYYMMDD-HHMMSS` format.
+
+**Immutability rule:** Raw `review-*.md` files must never be modified after creation. `REVIEW_SUMMARY.md` is updated with apply/skip status but raw content is never changed.
 
 ---
 
 ## Step 0: Validate Inputs
+
+Run checks 1-4 **in parallel** (all are independent). Then run check 5 (depends on 3):
 
 1. **Agent CLI check:** Verify `agent` CLI with `which agent`. If not found, warn that external model reviews will be skipped. Only built-in Opus reviewers will run.
 2. Verify project root exists.
@@ -49,7 +69,7 @@ See [references/output-structure.md](references/output-structure.md) for the ful
 4. Verify at least one versioned snapshot in `<PLAN_ROOT>/plans/`.
 5. Read `PLAN.md`, extract current version path from `Current version:` line, verify directory exists.
 
-If any validation fails, report clearly and stop.
+If any blocking check fails (2-5), report clearly and stop.
 
 ---
 
@@ -113,11 +133,13 @@ If CLI fails, retry once. If it fails again, write error report to output file.
 
 ### 3c: Wait and Collect
 
-Report progress as each completes. Continue with successful reviews if some fail. **Zero-success guard:** Stop if ALL fail.
+Report progress as each reviewer completes. For missing or errored review files, note failure and continue with successful reviews. **Zero-success guard:** Stop if ALL reviews failed — at least one is required for synthesis.
 
 ---
 
 ## Step 4: Synthesize Reviews
+
+**Quorum trigger:** Begin synthesis when **75% of reviewers** (rounded up) have completed — do not wait for all. If a straggler finishes while the synthesizer is still running, include its results. If it finishes after synthesis completes, append its findings as a **"Late Review"** addendum to `REVIEW_SUMMARY.md` rather than re-synthesizing.
 
 Launch `review-synthesizer` subagent (from `.claude/agents/review-synthesizer.md`) in **foreground**:
 
@@ -191,10 +213,9 @@ Present the diff summary, then ask:
 
 > "The plan has been updated (version `<NEW_VERSION_TIMESTAMP>`). Would you like to run another round of plan review, or are you happy with the plan?"
 
-- **Another round:** Summarize current round in 3-5 bullets. Re-read `PLAN.md` for new version. Go to **Step 2**. Carry forward only the round summary and new paths — re-read plan docs fresh.
+- **Another round:** Summarize current round in 3-5 bullets. Re-read `PLAN.md` for new version. Go to **Step 2** with `--changed-only` (scope reviewers to documents modified since last round). If the user requests a full re-review, drop `--changed-only`. Carry forward only the round summary and new paths — re-read plan docs fresh.
 - **Satisfied:** Confirm completion and end.
 
 ## Additional Resources
 
-- [references/output-structure.md](references/output-structure.md) — Directory layout and file reference
 - [templates/review-prompt.md](templates/review-prompt.md) — Review prompt template with all 8 evaluation dimensions
