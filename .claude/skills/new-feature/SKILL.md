@@ -20,7 +20,7 @@ Determine tier at the start. When ambiguous, start Light and escalate if complex
 
 | Tier | When | Phases | Adversarial | Default Autonomy |
 |------|------|--------|-------------|------------------|
-| **Light** | ≤3 files, no new modules, low risk | 0 (quick) → 1 (1 round) → 2 → 3 → 5 | Skip Phase 4; run `/git-review --quick` in 5d instead | `autonomous` |
+| **Light** | ≤3 files, no new modules, low risk | 0 (quick) → 1 (1 round) → 2 → 3 → 5 | Skip Phase 4; run `/git-review --quick` in 5a instead | `autonomous` |
 | **Standard** | Typical feature | All phases | Full convergence | `supervised` |
 | **Critical** | Security, data model, public API, financial | All phases + spec adversary (2b) | Full convergence + tighter cap (2 iterations before escalation) | `guided` |
 
@@ -266,8 +266,10 @@ Run `/git-review --external --changed-only` for re-review (scoped to files chang
 
 ## Phase 5: Completion
 
-### 5a: Cleanup
+### 5a: Cleanup + Final Check
 Run `/deslop-around:deslop-around apply` (mechanical) then `/polish` (semantic). Skip if no changes since last cleanup (multi-PR mode). **Constraint for `/polish`:** Do not delete tests that trace to SPEC.md "Tests to Write First" entries — consolidation (parameterization) is allowed, deletion is not. This preserves the spec-to-test traceability verified in Phase 3f and Phase 4.
+
+**Post-cleanup review guard:** Skip `/git-review --quick` if Phase 4 converged with zero CRITICAL and the only changes since last review are from deslop/polish (cleanup-only changes don't need re-review). Run `/git-review --quick` when: (a) **Light tier** — this is the only review, run regardless; or (b) any non-cleanup code changes were made after the last Phase 4 review. If CRITICAL found: **Standard/Critical tier** → full `/git-review --external`, return to Phase 4a. **Light tier** → escalate: present findings to developer with options: **Fix and re-run --quick** | **Enter full Phase 4** (override Light skip) | **Accept and proceed** (requires explicit per-CRITICAL acknowledgement, same as 4d guardrail).
 
 ### 5b: Final Test Run
 Full suite. All tests must pass.
@@ -279,15 +281,12 @@ Full suite. All tests must pass.
 - [ ] Iteration Log reflects final state
 - [ ] CHECKLIST.md fully checked off
 
-### 5d: Quick Final Check (conditional)
-If any code changes after last review → run `/git-review --quick`. CRITICAL found → full `/git-review --external`, return to Phase 4a. **Light tier:** This is the only review — run `/git-review --quick` here regardless. If `--quick` finds CRITICAL, escalate: present findings to developer with options: **Fix and re-run --quick** | **Enter full Phase 4** (override Light skip) | **Accept and proceed** (requires explicit per-CRITICAL acknowledgement, same as 4d guardrail).
-
-### 5e: Summary + Retrospective
+### 5d: Summary + Retrospective
 Present: what was built, files changed, test coverage, TDD compliance, convergence status, deferred issues, spec changes, next steps.
 
 **Retrospective:** Read [templates/RETROSPECTIVE.md](templates/RETROSPECTIVE.md) and generate `.claude/docs/[slug]/RETROSPECTIVE.md` following its structure.
 
-Source data: CHECKPOINT.md → metrics; SPEC.md Iteration Log → revision count + surprises; REVIEW_SUMMARY.md → findings counts + "What Went Well." **Light tier:** Phase 4 is skipped and 5d uses `--quick` (no REVIEW_SUMMARY.md). Report only CRITICAL count from `--quick` output; note "IMPORTANT/MINOR not assessed (quick review mode)" in the Metrics section. Omit convergence metrics (iterations, trend) from the retrospective. In `supervised`/`autonomous` mode, generate automatically. In `guided` mode, present draft and ask developer for additions.
+Source data: CHECKPOINT.md → metrics; SPEC.md Iteration Log → revision count + surprises; REVIEW_SUMMARY.md → findings counts + "What Went Well." **Light tier:** Phase 4 is skipped and 5a uses `--quick` (no REVIEW_SUMMARY.md). Report only CRITICAL count from `--quick` output; note "IMPORTANT/MINOR not assessed (quick review mode)" in the Metrics section. Omit convergence metrics (iterations, trend) from the retrospective. In `supervised`/`autonomous` mode, generate automatically. In `guided` mode, present draft and ask developer for additions.
 
 After writing, present any "Suggested Rules" entries to the developer for approval before adding to CLAUDE.md — **this is a hard gate in all autonomy modes** to prevent instruction creep. This closes the compounding loop: the project gets smarter with each feature, but only with human curation.
 
@@ -319,9 +318,8 @@ Examples: `/new-feature user search preferences endpoint` · `/new-feature --aut
 | 2d | `/plan-review` (optional) | Multi-model spec review |
 | 3→4 | `Explore` subagent | Anti-slop scan (fresh context) |
 | 4 | `/git-review --external` | Adversarial review + convergence |
-| 5a | `/deslop-around:deslop-around apply` → `/polish` | Cleanup passes |
-| 5d | `/git-review --quick` | Post-convergence sanity check |
-| 5e | `RETROSPECTIVE.md` generation | Cross-feature learning — metrics, patterns, suggested rules |
+| 5a | `/deslop-around:deslop-around apply` → `/polish` → conditional `/git-review --quick` | Cleanup + post-cleanup review guard |
+| 5d | `RETROSPECTIVE.md` generation | Cross-feature learning — metrics, patterns, suggested rules |
 
 If any tool is unavailable, read [references/fallbacks.md](references/fallbacks.md) for alternatives.
 
