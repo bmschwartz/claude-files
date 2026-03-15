@@ -45,7 +45,10 @@ Evaluate the changes on:
 
 ## Severity Definitions
 
-Use the severity definitions from [../references/review-criteria.md](../references/review-criteria.md): CRITICAL / IMPORTANT / MINOR / POTENTIAL.
+- **CRITICAL** (must fix): Security vulnerabilities, data loss risks, breaking API changes, crash-causing missing error handling, race conditions, memory leaks, incorrect business logic, pattern violations risking correctness/security, regression risk, new dependency CVEs
+- **IMPORTANT** (should fix): Performance problems, pattern violations (style), missing validation, hardcoded values, incomplete implementations, test coverage gaps, accessibility violations, major version bumps
+- **MINOR** (nice to have): Naming improvements, complexity reduction, missing docs for complex logic, code duplication, deprecated API usage, reuse opportunities
+- **POTENTIAL** (low confidence): Issues where reviewer is uncertain — flagged for human judgment, listed separately from high-confidence findings
 
 ## Output Requirements
 

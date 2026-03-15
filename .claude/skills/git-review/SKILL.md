@@ -99,7 +99,7 @@ Detect project type (Node.js/Python/Go/Rust) and run applicable checks in parall
 ## Phase 2: Code Review
 
 ### Step 2a: Get the Diff
-Execute the appropriate git diff command based on scope. For `--pr` mode, use `gh pr diff` + `gh pr view` for metadata. For untracked files, use `git diff --no-index /dev/null <file>`. For `--changed-only` mode: resolve the most recent review round directory for this branch (see [references/output-structure.md](references/output-structure.md)). Find the `_diff.patch` file and use its modification timestamp as the baseline. Run `git diff` scoped to files modified after that timestamp (`git diff --name-only` filtered by commit date, then full diff on those files only). If no prior round exists, fall back to the default full-scope diff. If changed files exceed 50% of total files in the branch diff, warn and suggest full review instead.
+Execute the appropriate git diff command based on scope. For `--pr` mode, use `gh pr diff` + `gh pr view` for metadata. For untracked files, use `git diff --no-index /dev/null <file>`. For `--changed-only` mode: resolve the most recent review round directory for this branch. Find the `_diff.patch` file. Diff the current working tree against the branch base (`git diff <merge-base>..HEAD -- <paths>`) but scope to only files that differ from the snapshot captured in `_diff.patch` (compare current file contents, not commit timestamps — this ensures uncommitted fixes are always included). If no prior round exists, fall back to the default full-scope diff. If changed files exceed 50% of total branch diff files, warn and suggest full review instead.
 
 ### Step 2b: Change Overview
 Show `git diff --stat` summary.

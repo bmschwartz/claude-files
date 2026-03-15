@@ -77,6 +77,8 @@ If any blocking check fails (2-5), report clearly and stop.
 
 Read all files in the current plan version directory. List and summarize each.
 
+**If `--changed-only`:** Compare file modification times against the most recent `REVIEW_SUMMARY.md` timestamp. Only include documents modified after that baseline. Always include `SPEC.md` regardless (it provides essential context). List skipped documents with reason "unchanged since last review". If all documents are unchanged, report "no changes detected" and stop.
+
 Expected documents (not all may be present):
 
 | Document | Purpose |
