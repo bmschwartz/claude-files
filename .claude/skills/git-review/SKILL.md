@@ -61,7 +61,7 @@ $ARGUMENTS
 
 ## Prerequisite Checks
 
-Before starting, perform these checks. **Stop immediately** if any fail:
+Run these checks **in parallel** (all are independent). **Stop immediately** if any blocking check fails:
 
 1. **Git repository:** `git rev-parse --is-inside-work-tree`. If fails → stop.
 2. **Merge conflicts:** `git diff --check HEAD`. If conflicts found → stop.
@@ -125,19 +125,25 @@ For thorough mode, create the review round directory. See [references/output-str
 
 ### Step 2f: Review Execution (thorough mode only)
 
-Launch all reviewers in parallel. See [references/review-execution.md](references/review-execution.md) for the full execution protocol including internal-only and external modes.
+Launch all reviewers **in parallel** (`run_in_background: true`) in a single message:
 
-Key points:
-- All reviewers run via `run_in_background: true`
-- `feature-dev:code-reviewer` agents do NOT have Write tool access — the orchestrator must capture their output and write review files
-- Report progress as each reviewer completes
-- Continue with partial results if some reviewers fail (but stop if ALL fail)
+**Internal reviewers (always):** Launch `<COUNT>` (default 1) `feature-dev:code-reviewer` agents (`model: "opus"`). Each receives: the full diff, codebase patterns from Phase 0, CLAUDE.md rules, feature spec docs (if available), PR metadata (if `--pr`). Include: "Only report issues with HIGH confidence. Tag uncertain issues as 'Potential Issue'. Return your complete review as your final message in markdown — do NOT attempt to write files." These reviewers have native codebase access (can read files, explore the project).
+
+**IMPORTANT:** `feature-dev:code-reviewer` does NOT have the Write tool. After each completes, the **orchestrator** must capture its output and write it to `${ROUND_DIR}/review-claude-code-<N>.md`.
+
+**External reviewers (with `--external`):** Also launch `<COUNT>` `code-review-executor` agents (from `.claude/agents/code-review-executor.md`) per external model. Each runs the `agent` CLI with the model, `_review-prompt.md`, `_diff.patch`, and project root. Output: `${ROUND_DIR}/review-<MODEL>-<N>.md`. If CLI fails, retry once; if it fails again, write error report to output file.
+
+**Progress:** As each reviewer completes, report: "Review complete: `<reviewer>` instance `<N>` (`M` of `TOTAL` remaining)".
+
+**Error recovery:** After reviewers finish: verify each expected review file exists and is non-empty. For missing/errored files, note failure and continue with successful reviews. **Zero-success guard:** If ALL reviews failed, stop — at least one is required for synthesis.
 
 ### Step 2g: Review Synthesis (thorough mode only)
 
-Launch `code-review-synthesizer` agent (from `.claude/agents/code-review-synthesizer.md`) in **foreground** with the round directory, successful review file paths, failed reviews, focus filter, and diff file.
+**Quorum trigger:** Begin synthesis when **75% of reviewers** (rounded up) have completed — do not wait for all. If a straggler finishes while the synthesizer is still running, include its results. If it finishes after synthesis completes, append its findings as a **"Late Review"** addendum to `REVIEW_SUMMARY.md` rather than re-synthesizing.
 
-The synthesizer reads all reviews, cross-references findings, applies agreement logic, categorizes by severity, applies focus filter, and writes `REVIEW_SUMMARY.md`.
+Launch `code-review-synthesizer` agent (from `.claude/agents/code-review-synthesizer.md`) in **foreground** with the round directory, completed review file paths, failed/pending reviews, focus filter, and diff file.
+
+The synthesizer reads all available reviews, cross-references findings, applies agreement logic, categorizes by severity, applies focus filter, and writes `REVIEW_SUMMARY.md`.
 
 Update `.claude/reviews/REVIEW.md` with the round link (newest first).
 
@@ -216,6 +222,33 @@ If reviewing changes from a `/new-feature` workflow, follow Step 0b to discover 
 
 ---
 
+## Agents
+
+### Built-in (via Agent tool)
+
+| Agent | Purpose | When used | Model |
+|-------|---------|-----------|-------|
+| `Explore` | Codebase pattern discovery (Phase 0) | Always (thorough mode) | `opus` |
+| `feature-dev:code-reviewer` | Built-in Claude code reviewer (× count) | Always (thorough mode) | `opus` |
+
+### Custom (from `.claude/agents/`)
+
+| Agent | Purpose | When used | Model |
+|-------|---------|-----------|-------|
+| `code-review-executor` | Runs `agent` CLI for external model reviews | `--external` only | `haiku` (executor only — actual review model via `--models`) |
+| `code-review-synthesizer` | Synthesizes all review findings into `REVIEW_SUMMARY.md` | Always (thorough mode) | `opus` |
+
+### Mode × Agent Matrix
+
+| Mode | `Explore` | `code-reviewer` | `code-review-executor` | `code-review-synthesizer` |
+|------|-----------|-----------------|------------------------|--------------------------|
+| default (internal) | ✓ background | ✓ background (× count) | — | ✓ foreground |
+| --external | ✓ background | ✓ background (× count) | ✓ background (per model × count) | ✓ foreground |
+| --quick | — | — | — | — |
+| --skip-fix | ✓ background | ✓ background (× count) | only with `--external` | ✓ foreground |
+
+---
+
 ## Key Principles
 
 - **Multi-model coverage** — Different models catch different things
@@ -234,8 +267,6 @@ If reviewing changes from a `/new-feature` workflow, follow Step 0b to discover 
   - [references/output-structure.md](references/output-structure.md) — Directory layout, branch sanitization, scope suffixes, file reference
   - [references/review-criteria.md](references/review-criteria.md) — CRITICAL/IMPORTANT/MINOR/POTENTIAL severity definitions
   - [references/output-format.md](references/output-format.md) — Complete output format (sections 0-13)
-  - [references/review-execution.md](references/review-execution.md) — Detailed review execution protocol
-  - [references/subagent-reference.md](references/subagent-reference.md) — Agent types and mode × agent matrix
 
 - **Templates:**
   - [templates/review-prompt.md](templates/review-prompt.md) — Prompt template for external model reviewers
