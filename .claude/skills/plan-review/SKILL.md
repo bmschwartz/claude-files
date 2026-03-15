@@ -3,6 +3,7 @@ name: plan-review
 description: Multi-model review and synthesis of implementation plans. Orchestrates parallel AI reviews of spec documents, synthesizes findings, gathers user input, and updates plan documents. Use when the user wants to review a feature plan, validate a specification, or get multi-model analysis before implementation. Typically invoked from /new-feature during the spec approval phase.
 disable-model-invocation: true
 argument-hint: "<project-root> <plan-root> [--models <list>] [--count <N>] [--changed-only] [--dry-run]"
+allowed-tools: Read, Grep, Glob, Write, Bash(mkdir *, date *, which *)
 ---
 
 # Plan Review: Multi-Model Analysis & Synthesis
@@ -32,7 +33,17 @@ This process is iterative — the user may choose to run another review cycle af
 
 **Default external models:** `composer-1.5`, `gpt-5.4-high-fast`, `gemini-3.1-pro`
 
-Parse `$ARGUMENTS` by splitting on whitespace. Extract flags first, then treat remaining positional tokens as project root and plan root.
+**Positional arguments:**
+- Project root: `$ARGUMENTS[0]` (required)
+- Plan root: `$ARGUMENTS[1]` (required)
+
+Remaining tokens are flags: `--models`, `--count`, `--changed-only`, `--dry-run`.
+
+---
+
+## Live Context
+
+- Agent CLI available: !`which agent 2>/dev/null && echo "yes" || echo "no"`
 
 ---
 
@@ -98,7 +109,7 @@ Expected documents (not all may be present):
 
 1. Generate timestamp: `REVIEW_TIMESTAMP=$(date +%Y%m%d-%H%M%S)`
 2. Create: `mkdir -p <PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/`
-3. Write review prompt to `_review-prompt.md` using the template at [templates/review-prompt.md](templates/review-prompt.md). This is preserved as an audit trail.
+3. Write review prompt to `_review-prompt.md` using the template at [templates/review-prompt.md](${CLAUDE_SKILL_DIR}/templates/review-prompt.md). This is preserved as an audit trail.
 
 ---
 
@@ -222,4 +233,4 @@ Present the diff summary, then ask:
 
 ## Additional Resources
 
-- [templates/review-prompt.md](templates/review-prompt.md) — Review prompt template with all 8 evaluation dimensions
+- [templates/review-prompt.md](${CLAUDE_SKILL_DIR}/templates/review-prompt.md) — Review prompt template with all 8 evaluation dimensions

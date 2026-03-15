@@ -2,6 +2,8 @@
 name: new-feature
 description: Orchestrates feature development with TDD + adversarial convergence. Explores codebase, writes specs, builds test-first, and converges via adversarial review. Use when the user wants to implement a new feature, says "new feature", "I want to implement", "let's build", or describes functionality to add. Scales by feature tier (Light/Standard/Critical) with configurable autonomy. Invoke with /new-feature [description] or /new-feature --autonomy <mode> [description].
 disable-model-invocation: true
+model: opus
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(git *, mkdir *, date *)
 ---
 
 # Feature Development with TDD + Adversarial Convergence
@@ -40,8 +42,8 @@ Determine tier at the start. When ambiguous, start Light and escalate if complex
 - **Red Before Green:** No implementation without a failing test that demanded it.
 - **Anti-Slop:** First "correct" version assumed to contain hidden debt.
 - **Fresh-Context Review:** Adversarial review always uses fresh subagent context — never self-review in the main orchestrator.
-- **CLAUDE.md breadcrumb:** Always reflects current workflow state (active/shelved/none). Update on every state transition. Never rewrite the full file — line-level edits only. See [references/context-resilience.md](references/context-resilience.md) for breadcrumb format.
-- **CHECKPOINT.md:** Single source of truth for "where am I?" Updated at every phase/substep transition. Overwrite, not append. See [references/context-resilience.md](references/context-resilience.md) for format.
+- **CLAUDE.md breadcrumb:** Always reflects current workflow state (active/shelved/none). Update on every state transition. Never rewrite the full file — line-level edits only. See [references/context-resilience.md](${CLAUDE_SKILL_DIR}/references/context-resilience.md) for breadcrumb format.
+- **CHECKPOINT.md:** Single source of truth for "where am I?" Updated at every phase/substep transition. Overwrite, not append. See [references/context-resilience.md](${CLAUDE_SKILL_DIR}/references/context-resilience.md) for format.
 - **Conditional re-reads:** At phase boundaries, re-read a state doc only if (a) recovering from compaction, or (b) its version/content may have changed (check CHECKPOINT.md's Spec Version field or Iteration Log entries as change signals). Skip re-reads of unchanged docs to save tokens.
 
 ### Roles
@@ -51,6 +53,14 @@ Determine tier at the start. When ambiguous, start Light and escalate if complex
 | **Architect** | Human Developer | Vision, domain expertise, acceptance authority |
 | **Builder** | Claude Code (main context) | Spec, tests, implementation under TDD constraints |
 | **Adversary** | `/git-review --external` or fresh subagent | Review with iterative convergence |
+
+---
+
+## Live Context
+
+- Current branch: !`git branch --show-current 2>/dev/null || echo "detached"`
+- Active breadcrumb: !`grep -r 'new-feature:' CLAUDE.md 2>/dev/null || echo "none"`
+- Active checkpoints: !`ls .claude/docs/*/CHECKPOINT.md 2>/dev/null || echo "none"`
 
 ---
 
@@ -68,7 +78,7 @@ Phase 0 → 1 → 2 (spec + review gate) → 3 (TDD per phase) → 4 (adversaria
 
 **Purpose:** Gather context BEFORE asking questions. Questions should be informed by what the codebase already tells us.
 
-**Startup:** Read CLAUDE.md for existing breadcrumbs. If a breadcrumb is found, read [references/resume-shelve-abandon.md](references/resume-shelve-abandon.md) for the handling protocol.
+**Startup:** Read CLAUDE.md for existing breadcrumbs. If a breadcrumb is found, read [references/resume-shelve-abandon.md](${CLAUDE_SKILL_DIR}/references/resume-shelve-abandon.md) for the handling protocol.
 
 **Launch parallel agents** (`Agent` tool):
 
@@ -107,7 +117,7 @@ Phase 0 → 1 → 2 (spec + review gate) → 3 (TDD per phase) → 4 (adversaria
 ### 2a: Architecture Design
 
 1. **Derive feature slug** from description (lowercase, hyphens, drop only articles/prepositions). Collision check: if `.claude/docs/[slug]/` exists from a prior workflow (completed, abandoned, or shelved), increment a numeric suffix (`-v2`, `-v3`, ...) until an unused directory is found. Cap at `-v9` — if all are taken, ask the user which existing workflow to abandon or shelve.
-2. **Initialize state:** Create `.claude/docs/[slug]/`, write CHECKPOINT.md (Phase: 2, Substep: 2a, Status: active), write CLAUDE.md breadcrumb. Read [references/context-resilience.md](references/context-resilience.md) for CHECKPOINT.md and breadcrumb formats.
+2. **Initialize state:** Create `.claude/docs/[slug]/`, write CHECKPOINT.md (Phase: 2, Substep: 2a, Status: active), write CLAUDE.md breadcrumb. Read [references/context-resilience.md](${CLAUDE_SKILL_DIR}/references/context-resilience.md) for CHECKPOINT.md and breadcrumb formats.
 3. **Persist exploration:** Write `.claude/docs/[slug]/EXPLORATION.md` summarizing Phase 0 findings + Phase 1 requirements.
 4. **Architecture blueprint:** Launch `feature-dev:code-architect` (or `Plan` for Light tier) with exploration findings + requirements.
 
@@ -119,7 +129,7 @@ Update CHECKPOINT.md: Substep: 2b.
 
 Create `.claude/docs/[slug]/plans/<YYYYMMDD-HHMMSS>/SPEC.md`. Update CHECKPOINT.md `Spec Version` to point to this timestamp directory — this is the baseline for conditional re-reads, compaction recovery, and the spec feedback loop.
 
-**SPEC.md structure:** Read and follow the template at [templates/SPEC.md](templates/SPEC.md). Add these **TDD-specific additions** to each Implementation Phase:
+**SPEC.md structure:** Read and follow the template at [templates/SPEC.md](${CLAUDE_SKILL_DIR}/templates/SPEC.md). Add these **TDD-specific additions** to each Implementation Phase:
 - `#### Tests to Write First` — test descriptions with impact tier (HIGH/MEDIUM/LOW per `/polish` Phase 3 definitions). Target ≥50% HIGH, ≤25% LOW.
 - `#### Refactoring Notes` — cleanup expected after green
 
@@ -138,9 +148,9 @@ Create `.claude/docs/[slug]/plans/<YYYYMMDD-HHMMSS>/SPEC.md`. Update CHECKPOINT.
 
 Update CHECKPOINT.md: Substep: 2c.
 
-Generate supporting documents **in parallel** — each reads from SPEC.md and its respective template from the [templates/](templates/) directory independently. Use multiple `Write` tool calls in a single message. TDD-specific modification to CHECKLIST.md: label groups within each phase as `#### Tests (complete before implementation)` and `#### Implementation (only after all tests pass)`.
+Generate supporting documents **in parallel** — each reads from SPEC.md and its respective template from the [templates/](${CLAUDE_SKILL_DIR}/templates/) directory independently. Use multiple `Write` tool calls in a single message. TDD-specific modification to CHECKLIST.md: label groups within each phase as `#### Tests (complete before implementation)` and `#### Implementation (only after all tests pass)`.
 
-**Always:** CHECKLIST.md, README.md. **Conditionally:** KEY_DECISIONS.md (high-impact decisions only), PR_STRATEGY.md (multi-PR only — read [references/multi-pr-workflow.md](references/multi-pr-workflow.md) for details). **Conditionally:** FIXTURES.md — generate only when SPEC.md contains explicit test fixture data (lookup tables, sample payloads, mock configurations) that would clutter the spec. If SPEC.md "Tests to Write First" sections are self-contained, skip FIXTURES.md. **Light tier:** Skip KEY_DECISIONS.md and PR_STRATEGY.md; generate only CHECKLIST.md and README.md.
+**Always:** CHECKLIST.md, README.md. **Conditionally:** KEY_DECISIONS.md (high-impact decisions only), PR_STRATEGY.md (multi-PR only — read [references/multi-pr-workflow.md](${CLAUDE_SKILL_DIR}/references/multi-pr-workflow.md) for details). **Conditionally:** FIXTURES.md — generate only when SPEC.md contains explicit test fixture data (lookup tables, sample payloads, mock configurations) that would clutter the spec. If SPEC.md "Tests to Write First" sections are self-contained, skip FIXTURES.md. **Light tier:** Skip KEY_DECISIONS.md and PR_STRATEGY.md; generate only CHECKLIST.md and README.md.
 
 **Generate PLAN.md last** (after all other documents) at doc root linking to current version, since it references the other documents.
 
@@ -162,7 +172,7 @@ Present spec to user with options: **Run /plan-review (Recommended)** | **Approv
 
 **Purpose:** Build via phase-gated TDD. Every line demanded by a failing test.
 
-**Setup:** Create feature branch `feat/[slug]`. Mark first phase task `in_progress`. Update CHECKPOINT.md: Phase: 3, Substep: 3a, Implementation Phase: 1 of N. For multi-PR, read [references/multi-pr-workflow.md](references/multi-pr-workflow.md).
+**Setup:** Create feature branch `feat/[slug]`. Mark first phase task `in_progress`. Update CHECKPOINT.md: Phase: 3, Substep: 3a, Implementation Phase: 1 of N. For multi-PR, read [references/multi-pr-workflow.md](${CLAUDE_SKILL_DIR}/references/multi-pr-workflow.md).
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -213,7 +223,7 @@ Launch a fresh `Explore` subagent to scan all code written in Phase 3 for the pa
 
 ### Spec Feedback Loop
 
-Triggered when implementation reveals SPEC.md is wrong or incomplete. Read [references/spec-feedback-loop.md](references/spec-feedback-loop.md) for the full protocol. Key rules:
+Triggered when implementation reveals SPEC.md is wrong or incomplete. Read [references/spec-feedback-loop.md](${CLAUDE_SKILL_DIR}/references/spec-feedback-loop.md) for the full protocol. Key rules:
 - Significant changes (acceptance criteria, phases, public API, security, scope) → new version snapshot + developer approval (hard gate)
 - Minor clarifications → edit in place, log in Iteration Log, proceed
 - Circuit breaker: >3 spec revisions in one phase → ask developer to continue, re-scope, or return to Phase 2
@@ -226,7 +236,7 @@ Triggered when implementation reveals SPEC.md is wrong or incomplete. Read [refe
 
 **Purpose:** Adversarial review with iterative convergence. **Light tier skips this phase entirely.**
 
-For integration details with `/git-review` and `/plan-review`, read [references/integration-notes.md](references/integration-notes.md).
+For integration details with `/git-review` and `/plan-review`, read [references/integration-notes.md](${CLAUDE_SKILL_DIR}/references/integration-notes.md).
 
 ### 4a: Initial Review
 Update CHECKPOINT.md: Phase: 4. **First entry:** set Convergence Iteration: 0. Run `/git-review --external` (full scope). **Spec-triggered re-entry** from 4c: increment Convergence Iteration by 1 (same as any re-review) and record `spec-triggered` flag in CHECKPOINT.md Notes for this iteration. Run `/git-review --external --changed-only` (scoped to files changed since last review round).
@@ -288,7 +298,7 @@ Full suite. All tests must pass.
 ### 5d: Summary + Retrospective
 Present: what was built, files changed, test coverage, TDD compliance, convergence status, deferred issues, spec changes, next steps.
 
-**Retrospective:** Read [templates/RETROSPECTIVE.md](templates/RETROSPECTIVE.md) and generate `.claude/docs/[slug]/RETROSPECTIVE.md` following its structure.
+**Retrospective:** Read [templates/RETROSPECTIVE.md](${CLAUDE_SKILL_DIR}/templates/RETROSPECTIVE.md) and generate `.claude/docs/[slug]/RETROSPECTIVE.md` following its structure.
 
 Source data: CHECKPOINT.md → metrics; SPEC.md Iteration Log → revision count + surprises; REVIEW_SUMMARY.md → findings counts + "What Went Well." **Light tier:** Phase 4 is skipped and 5a uses `--quick` (no REVIEW_SUMMARY.md). Report only CRITICAL count from `--quick` output; note "IMPORTANT/MINOR not assessed (quick review mode)" in the Metrics section. Omit convergence metrics (iterations, trend) from the retrospective. In `supervised`/`autonomous` mode, generate automatically. In `guided` mode, present draft and ask developer for additions.
 
@@ -325,23 +335,23 @@ Examples: `/new-feature user search preferences endpoint` · `/new-feature --aut
 | 5a | `/deslop-around:deslop-around apply` → `/polish` → conditional `/git-review --quick` | Cleanup + post-cleanup review guard |
 | 5d | `RETROSPECTIVE.md` generation | Cross-feature learning — metrics, patterns, suggested rules |
 
-If any tool is unavailable, read [references/fallbacks.md](references/fallbacks.md) for alternatives.
+If any tool is unavailable, read [references/fallbacks.md](${CLAUDE_SKILL_DIR}/references/fallbacks.md) for alternatives.
 
 ## Additional Resources
 
 - **Templates** — read when generating spec documents in Phase 2:
-  - [templates/SPEC.md](templates/SPEC.md) — Full specification template
-  - [templates/README.md](templates/README.md) — Navigation guide template
-  - [templates/KEY_DECISIONS.md](templates/KEY_DECISIONS.md) — Design decisions template
-  - [templates/CHECKLIST.md](templates/CHECKLIST.md) — Implementation task list template (TDD-modified)
-  - [templates/PR_STRATEGY.md](templates/PR_STRATEGY.md) — PR breakdown template
-  - [templates/FIXTURES.md](templates/FIXTURES.md) — Test fixtures template (rarely generated — see 2c)
-  - [templates/RETROSPECTIVE.md](templates/RETROSPECTIVE.md) — Post-feature retrospective template
+  - [templates/SPEC.md](${CLAUDE_SKILL_DIR}/templates/SPEC.md) — Full specification template
+  - [templates/README.md](${CLAUDE_SKILL_DIR}/templates/README.md) — Navigation guide template
+  - [templates/KEY_DECISIONS.md](${CLAUDE_SKILL_DIR}/templates/KEY_DECISIONS.md) — Design decisions template
+  - [templates/CHECKLIST.md](${CLAUDE_SKILL_DIR}/templates/CHECKLIST.md) — Implementation task list template (TDD-modified)
+  - [templates/PR_STRATEGY.md](${CLAUDE_SKILL_DIR}/templates/PR_STRATEGY.md) — PR breakdown template
+  - [templates/FIXTURES.md](${CLAUDE_SKILL_DIR}/templates/FIXTURES.md) — Test fixtures template (rarely generated — see 2c)
+  - [templates/RETROSPECTIVE.md](${CLAUDE_SKILL_DIR}/templates/RETROSPECTIVE.md) — Post-feature retrospective template
 
 - **References** — read when the specific situation arises:
-  - [references/resume-shelve-abandon.md](references/resume-shelve-abandon.md) — Startup breadcrumb handling and exit protocol
-  - [references/spec-feedback-loop.md](references/spec-feedback-loop.md) — Protocol when spec needs mid-implementation changes
-  - [references/multi-pr-workflow.md](references/multi-pr-workflow.md) — Multi-PR orchestration with handoff gates
-  - [references/context-resilience.md](references/context-resilience.md) — CHECKPOINT.md format, breadcrumbs, compaction recovery
-  - [references/fallbacks.md](references/fallbacks.md) — What to do when a tool is unavailable
-  - [references/integration-notes.md](references/integration-notes.md) — How /git-review and /plan-review interact with this workflow
+  - [references/resume-shelve-abandon.md](${CLAUDE_SKILL_DIR}/references/resume-shelve-abandon.md) — Startup breadcrumb handling and exit protocol
+  - [references/spec-feedback-loop.md](${CLAUDE_SKILL_DIR}/references/spec-feedback-loop.md) — Protocol when spec needs mid-implementation changes
+  - [references/multi-pr-workflow.md](${CLAUDE_SKILL_DIR}/references/multi-pr-workflow.md) — Multi-PR orchestration with handoff gates
+  - [references/context-resilience.md](${CLAUDE_SKILL_DIR}/references/context-resilience.md) — CHECKPOINT.md format, breadcrumbs, compaction recovery
+  - [references/fallbacks.md](${CLAUDE_SKILL_DIR}/references/fallbacks.md) — What to do when a tool is unavailable
+  - [references/integration-notes.md](${CLAUDE_SKILL_DIR}/references/integration-notes.md) — How /git-review and /plan-review interact with this workflow
