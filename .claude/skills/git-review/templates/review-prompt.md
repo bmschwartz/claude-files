@@ -43,10 +43,14 @@ Evaluate the changes on:
 6. **Test Coverage** — Are changes tested? Do tests follow existing test patterns?
 7. **Dependencies** — Are new dependencies safe? Major version bumps? Known CVEs?
 
+## Severity Definitions
+
+Use the severity definitions from [../references/review-criteria.md](../references/review-criteria.md): CRITICAL / IMPORTANT / MINOR / POTENTIAL.
+
 ## Output Requirements
 
 For each issue found:
-- State the **severity**: CRITICAL / IMPORTANT / MINOR / POTENTIAL
+- State the **severity** per the definitions above
 - Provide the exact **file path and line number**
 - Show the **current code** (the problematic snippet)
 - Provide a **suggested fix** (concrete code)
