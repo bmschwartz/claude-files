@@ -3,6 +3,9 @@ name: git-review
 description: Comprehensive code review with built-in Claude reviewers and optional multi-model analysis. Reviews staged changes, unstaged changes, specific files, commits, branches, or pull requests. Use when the user wants a code review, says "review my code", "check my changes", or wants to validate code quality before committing. Supports --quick for fast reviews, --external for multi-model, and --focus for targeted analysis.
 disable-model-invocation: true
 argument-hint: "[--quick] [--external] [--changed-only] [--focus <area>] [--pr <number>] [files...]"
+model: opus
+skills: polish
+allowed-tools: Read, Grep, Glob, Bash(git diff*, git log*, git branch*, git rev-parse*, git show*, git merge-base*, gh pr*)
 ---
 
 # Git Code Review
@@ -56,6 +59,15 @@ A comprehensive code review command that uses built-in Claude `feature-dev:code-
 
 Parse the arguments to determine behavior:
 $ARGUMENTS
+
+---
+
+## Live Context
+
+- Current branch: !`git branch --show-current 2>/dev/null || echo "detached"`
+- Repository root: !`git rev-parse --show-toplevel 2>/dev/null || echo "not a git repo"`
+- Staged files: !`git diff --cached --name-only 2>/dev/null`
+- Unstaged files: !`git diff --name-only 2>/dev/null`
 
 ---
 
@@ -116,12 +128,12 @@ Check for changes to dependency manifests (package.json, requirements.txt, go.mo
 
 **Quick mode skips Steps 2e–2g.** Perform direct diff analysis focusing on CRITICAL issues only.
 
-For thorough mode, create the review round directory. See [references/output-structure.md](references/output-structure.md) for directory layout and branch name sanitization rules.
+For thorough mode, create the review round directory. See [references/output-structure.md](${CLAUDE_SKILL_DIR}/references/output-structure.md) for directory layout and branch name sanitization rules.
 
 1. Determine branch directory name and scope suffix
 2. Generate timestamp: `REVIEW_TIMESTAMP=$(date +%Y%m%d-%H%M%S)`
 3. Create `${ROUND_DIR}` and save `_diff.patch`
-4. If `--external`: write `_review-prompt.md` using the template at [templates/review-prompt.md](templates/review-prompt.md)
+4. If `--external`: write `_review-prompt.md` using the template at [templates/review-prompt.md](${CLAUDE_SKILL_DIR}/templates/review-prompt.md)
 
 ### Step 2f: Review Execution (thorough mode only)
 
@@ -151,7 +163,7 @@ Update `.claude/reviews/REVIEW.md` with the round link (newest first).
 
 ## Review Output
 
-See [references/output-format.md](references/output-format.md) for the complete output format (sections 0-13). Key sections:
+See [references/output-format.md](${CLAUDE_SKILL_DIR}/references/output-format.md) for the complete output format (sections 0-13). Key sections:
 
 - **Change Overview** — `git diff --stat`
 - **Summary** — 1-2 sentences
@@ -159,7 +171,7 @@ See [references/output-format.md](references/output-format.md) for the complete 
 - **Spec Compliance** — if feature docs exist
 - **Recommendation** — APPROVE / NEEDS_FIXES / BLOCK
 
-For review criteria definitions (CRITICAL/IMPORTANT/MINOR/POTENTIAL), see [references/review-criteria.md](references/review-criteria.md).
+For review criteria definitions (CRITICAL/IMPORTANT/MINOR/POTENTIAL), see [references/review-criteria.md](${CLAUDE_SKILL_DIR}/references/review-criteria.md).
 
 ---
 
@@ -264,9 +276,9 @@ If reviewing changes from a `/new-feature` workflow, follow Step 0b to discover 
 ## Additional Resources
 
 - **References:**
-  - [references/output-structure.md](references/output-structure.md) — Directory layout, branch sanitization, scope suffixes, file reference
-  - [references/review-criteria.md](references/review-criteria.md) — CRITICAL/IMPORTANT/MINOR/POTENTIAL severity definitions
-  - [references/output-format.md](references/output-format.md) — Complete output format (sections 0-13)
+  - [references/output-structure.md](${CLAUDE_SKILL_DIR}/references/output-structure.md) — Directory layout, branch sanitization, scope suffixes, file reference
+  - [references/review-criteria.md](${CLAUDE_SKILL_DIR}/references/review-criteria.md) — CRITICAL/IMPORTANT/MINOR/POTENTIAL severity definitions
+  - [references/output-format.md](${CLAUDE_SKILL_DIR}/references/output-format.md) — Complete output format (sections 0-13)
 
 - **Templates:**
-  - [templates/review-prompt.md](templates/review-prompt.md) — Prompt template for external model reviewers
+  - [templates/review-prompt.md](${CLAUDE_SKILL_DIR}/templates/review-prompt.md) — Prompt template for external model reviewers
