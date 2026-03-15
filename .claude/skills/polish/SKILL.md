@@ -1,3 +1,10 @@
+---
+name: polish
+description: Semantic cleanup pass for committed work. Strips low-value comments and development artifacts, then audits tests by value tier. Use when the user wants to clean up code quality, remove development comments, audit test value, or prepare code for review. Also invoked automatically by /new-feature during the PR Handoff Gate.
+disable-model-invocation: true
+argument-hint: "[comments-only|tests-only] [path/glob]"
+---
+
 # /polish — Comment Cleanup & Test Audit
 
 > Semantic cleanup pass for committed work. Strips low-value comments and development artifacts, then audits tests by value tier.
@@ -6,7 +13,7 @@
 
 Unlike `/deslop-around` (which targets mechanical patterns like `console.log` and TODO), `/polish` targets **semantic slop**: comments that reference the development process, docstrings that restate the obvious, and tests that don't justify their existence.
 
-Usable standalone or invoked automatically by `/new-feature-vdd` during the PR Handoff Gate.
+Usable standalone or invoked automatically by `/new-feature` during the PR Handoff Gate.
 
 ## Arguments
 
@@ -14,6 +21,8 @@ Usable standalone or invoked automatically by `/new-feature-vdd` during the PR H
 - **Mode**: `full` (default — comments + tests) or `comments-only` or `tests-only`
 
 Parse from $ARGUMENTS or use defaults.
+
+---
 
 ## Phase 1: Determine Scope
 
@@ -33,9 +42,11 @@ Separate files into two groups:
 
 If no files are in scope, report "Nothing to polish" and stop.
 
-## Phase 2: Comment Cleanup
+---
 
-**Read each source file and test file in scope.** For each, identify and remove:
+## Phase 2: Comment Analysis
+
+**Read each source file and test file in scope.** For each, **identify but do not yet apply** the following categories of removable comments:
 
 ### Development Artifact Comments (highest priority)
 - References to plan phases, micro-cycles, spec details (e.g., "Phase 1:", "Micro-cycle 2:", "Per the spec...", "Implementation phase N")
@@ -59,9 +70,11 @@ If no files are in scope, report "Nothing to polish" and stop.
 - Return value descriptions that restate the function name (e.g., `Returns: The user's name` for `get_user_name()`)
 - **Keep:** Descriptions for parameters with non-obvious constraints, side effects, or valid value ranges
 
-**Apply all comment removals.** Use `Edit` for each file — do not rewrite entire files. Commit comment cleanup separately: `chore: strip low-value comments and development artifacts`.
+**Output:** Collect all findings into a structured report (do NOT apply yet — see Phase 4).
 
-## Phase 3: Test Audit
+---
+
+## Phase 3: Test Analysis
 
 **Read each test file in scope.** For every test function/method, classify it:
 
@@ -79,29 +92,115 @@ If no files are in scope, report "Nothing to polish" and stop.
 ### LOW — Defensive edge cases, unlikely scenarios, low-signal assertions
 - Tests for extremely unlikely input combinations
 - Tests that assert on static content, constant values, or string formatting
-- Tests that are nearly identical to another test (differ only in trivial input variation without using parameterization)
+- Tests that are nearly identical to another test (differ only in trivial input variation without parameterization)
 - Tests that would pass even with a subtly broken implementation (tautological)
 - Tests where deleting them would leave zero production failures undetected
 
-### Actions
+### Proposed Actions (do NOT apply yet)
 
-1. **Remove LOW-value tests.** If multiple LOW tests cover similar ground, consider whether a single parameterized test would be better — if so, create it as a replacement. Otherwise, just delete.
+For each test, propose one of:
+- **Keep** — HIGH tests, or MEDIUM tests covering distinct code paths
+- **Consolidate** — 2+ MEDIUM/LOW tests differing only in input → parameterized test
+- **Remove** — LOW tests with no unique coverage
 
-2. **Evaluate MEDIUM tests.** For each MEDIUM test, decide:
-   - **Keep** if it covers a genuinely distinct code path
-   - **Consolidate** if 2+ MEDIUM tests differ only in input → convert to parameterized test
-   - **Remove** if on reflection it's actually LOW (the initial classification was generous)
+**Also identify DRY opportunities:**
+- 3+ tests sharing identical fixture/mock setup → propose shared fixture extraction
+- Repeated assertion patterns → propose helper assertion (only if significantly reduces noise)
 
-3. **Look for DRY opportunities across all remaining tests:**
-   - 3+ tests sharing identical fixture/mock setup → extract shared fixture
-   - Tests differing only in input/output → `@pytest.mark.parametrize` (or language equivalent)
-   - Repeated assertion patterns → consider a helper assertion function only if it significantly reduces noise
+**Output:** Collect all classifications and proposed actions (do NOT apply yet — see Phase 4).
 
-4. **Run the full test suite** after all test changes to verify nothing broke.
+---
 
-5. **Commit test audit separately:** `chore: audit tests — remove low-value, consolidate duplicates`.
+## Phase 4: Confirmation Gate
 
-## Phase 4: Summary
+**Present all findings to the user for approval before making any changes.**
+
+### Comment Findings
+
+Show a summary grouped by file:
+
+```
+## Comment Cleanup Findings
+
+### src/auth/middleware.ts
+1. [DEV ARTIFACT] Line 23: "# Added during Phase 2 convergence" → Remove
+2. [LOW-VALUE DOC] Lines 45-48: Docstring restates function name `validate_token` → Remove
+3. [RESTATING] Line 67: "# Check if token is expired" before `if token.is_expired()` → Remove
+
+### src/api/routes.ts
+4. [DEV ARTIFACT] Line 12: "# Per SPEC.md requirement 3.2" → Remove
+```
+
+### Test Findings
+
+Show the classification table and proposed actions:
+
+```
+## Test Audit Findings
+
+### tests/test_auth.py
+| Test | Classification | Proposed Action | Rationale |
+|------|---------------|-----------------|-----------|
+| test_login_success | HIGH | Keep | Primary happy path |
+| test_login_empty_password | HIGH | Keep | Critical validation |
+| test_login_whitespace_only | LOW | Remove | Covered by empty password test |
+| test_login_unicode_password | MEDIUM | Keep | Distinct code path |
+| test_login_very_long_password | LOW | Consolidate | Merge with max-length parameterized |
+
+### DRY Opportunities
+- tests/test_auth.py: 4 tests share identical mock user setup → extract `mock_user` fixture
+```
+
+### Approval
+
+Use `AskUserQuestion` to get approval:
+
+```
+AskUserQuestion:
+  question: "I've identified [N] comment removals across [M] files and [X] test changes. Review the findings above — would you like to proceed?"
+  header: "Polish"
+  options:
+    - label: "Apply all (Recommended)"
+      description: "Apply all proposed comment removals and test changes"
+    - label: "Comments only"
+      description: "Apply only comment removals, skip test changes"
+    - label: "Let me pick"
+      description: "I'll tell you which specific changes to apply or skip"
+    - label: "Cancel"
+      description: "Don't apply any changes"
+```
+
+- **Apply all:** Proceed to Phase 5 with all changes.
+- **Comments only:** Apply only comment cleanup in Phase 5, skip test changes.
+- **Let me pick:** Wait for the user to specify which numbered items to apply or skip. Then proceed with the approved subset.
+- **Cancel:** Stop without making changes.
+
+---
+
+## Phase 5: Apply Approved Changes
+
+### Comment Cleanup (if approved)
+
+Apply all approved comment removals using `Edit` for each file — do not rewrite entire files.
+
+Run the test suite to verify comment removal didn't break anything.
+
+Commit: `chore: strip low-value comments and development artifacts`.
+
+### Test Audit (if approved)
+
+Apply approved test changes:
+1. Remove approved LOW-value tests. Create parameterized replacements where proposed.
+2. Apply approved MEDIUM test consolidations.
+3. Apply approved DRY improvements (shared fixtures, parameterization).
+
+Run the **full test suite** to verify nothing broke.
+
+Commit: `chore: audit tests — remove low-value, consolidate duplicates`.
+
+---
+
+## Phase 6: Summary
 
 Present results:
 
@@ -128,6 +227,8 @@ Present results:
 - Tests: [pass/fail]
 ```
 
+---
+
 ## Non-Negotiable Constraints
 
 1. **Never remove comments that explain *why*.** When in doubt, keep it.
@@ -136,6 +237,9 @@ Present results:
 4. **Preserve behavior.** Comment removal must not change any code logic. Test removal must not leave critical paths uncovered.
 5. **Minimal diffs.** Use `Edit` tool for surgical changes, not file rewrites.
 6. **Two separate commits.** Comment cleanup and test audit are independent concerns.
+7. **Always confirm before applying.** Never remove or change anything without user approval in Phase 4.
+
+---
 
 ## Standalone Usage
 
@@ -146,6 +250,6 @@ Present results:
 /polish src/features/        # Scope to specific path
 ```
 
-## Integration with /new-feature-vdd
+## Integration with /new-feature
 
-When invoked from the PR Handoff Gate in `/new-feature-vdd`, `/polish` runs in `full` mode on the current PR's branch diff. The results are committed before presenting the PR to the developer for review.
+When invoked from the PR Handoff Gate in `/new-feature`, `/polish` runs in `full` mode on the current PR's branch diff. In this context, the confirmation gate still applies — findings are presented before any changes are made.
