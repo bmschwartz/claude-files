@@ -108,15 +108,17 @@ Launch **both** built-in and external reviewers in parallel.
 
 ### 3a: Built-in Opus Reviewers (always run)
 
-Launch `<COUNT>` Agent tool subagents **in background** with `model: opus`:
+Launch `<COUNT>` Agent tool subagents **in background** with `model: opus`, `subagent_type: "Explore"`:
 
 ```
 You are a plan reviewer.
 1. Read the review prompt at <PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/_review-prompt.md
 2. Read all plan documents in <CURRENT_PLAN_VERSION_DIR>/
 3. The project codebase is at <PROJECT_ROOT> — verify file paths, APIs, and patterns
-4. Write your review to: <PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/review-opus-internal-<N>.md
+4. Return your complete review as your final message in markdown — do NOT attempt to write files.
 ```
+
+**IMPORTANT:** `Explore` agents cannot write files. After each completes, the **orchestrator** must capture its output and write it to `<PLAN_ROOT>/reviews/<REVIEW_TIMESTAMP>/review-opus-internal-<N>.md`.
 
 ### 3b: External Model Reviewers (when agent CLI available)
 

@@ -132,7 +132,7 @@ Create `.claude/docs/[slug]/plans/<YYYYMMDD-HHMMSS>/SPEC.md`. Update CHECKPOINT.
 6. **Test DRY:** 3+ tests sharing setup → shared fixture. Input-only variation → parameterize (see `/polish` Phase 3 for consolidation patterns).
 7. **Comment Policy:** Docstrings only for public APIs and non-obvious behavior (see `/polish` Phase 2 for what constitutes low-value).
 
-**Critical tier — Spec Adversary:** Launch a parallel `general-purpose` subagent that attempts to break the spec: find ambiguities, missing edge cases, unstated assumptions, conflicting requirements. Incorporate findings before 2c. This shifts adversarial pressure earlier — cheaper to fix specs than code.
+**Critical tier — Spec Adversary:** Launch a parallel `Explore` subagent (`model: "opus"`) that attempts to break the spec: find ambiguities, missing edge cases, unstated assumptions, conflicting requirements. The adversary is read-only — it returns findings; the orchestrator incorporates them before 2c. This shifts adversarial pressure earlier — cheaper to fix specs than code.
 
 ### 2c: Generate Supporting Documents
 
@@ -318,7 +318,7 @@ Examples: `/new-feature user search preferences endpoint` · `/new-feature --aut
 | 0 | `Explore` (×2, or ×1 Light) | Pattern + architecture discovery |
 | 0 | `feature-dev:code-explorer` (Standard/Critical) | Deep execution path tracing |
 | 2a | `feature-dev:code-architect` or `Plan` (Light) | Architecture blueprint |
-| 2b | `general-purpose` (Critical only) | Spec adversary |
+| 2b | `Explore` (Critical only) | Spec adversary (read-only) |
 | 2d | `/plan-review` (optional) | Multi-model spec review |
 | 3→4 | `Explore` subagent | Anti-slop scan (fresh context) |
 | 4 | `/git-review --external` | Adversarial review + convergence |
