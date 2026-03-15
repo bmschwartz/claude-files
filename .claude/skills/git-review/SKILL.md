@@ -2,7 +2,7 @@
 name: git-review
 description: Comprehensive code review with built-in Claude reviewers and optional multi-model analysis. Reviews staged changes, unstaged changes, specific files, commits, branches, or pull requests. Use when the user wants a code review, says "review my code", "check my changes", or wants to validate code quality before committing. Supports --quick for fast reviews, --external for multi-model, and --focus for targeted analysis.
 disable-model-invocation: true
-argument-hint: "[--quick] [--external] [--focus <area>] [--pr <number>] [files...]"
+argument-hint: "[--quick] [--external] [--changed-only] [--focus <area>] [--pr <number>] [files...]"
 ---
 
 # Git Code Review
@@ -28,6 +28,7 @@ A comprehensive code review command that uses built-in Claude `feature-dev:code-
 - `/git-review HEAD~1` - Review the last commit
 - `/git-review branch-name` - Review differences between current branch and specified branch
 - `/git-review --pr <number>` - Review a GitHub pull request by number
+- `/git-review --changed-only` - Scope review to files changed since the last review round in the current branch directory. Uses the most recent `_diff.patch` timestamp as the baseline. Falls back to full diff if no prior round exists.
 
 ### Focus Options
 - `/git-review --focus security` - Focus on security issues only
@@ -98,7 +99,7 @@ Detect project type (Node.js/Python/Go/Rust) and run applicable checks in parall
 ## Phase 2: Code Review
 
 ### Step 2a: Get the Diff
-Execute the appropriate git diff command based on scope. For `--pr` mode, use `gh pr diff` + `gh pr view` for metadata. For untracked files, use `git diff --no-index /dev/null <file>`.
+Execute the appropriate git diff command based on scope. For `--pr` mode, use `gh pr diff` + `gh pr view` for metadata. For untracked files, use `git diff --no-index /dev/null <file>`. For `--changed-only` mode: resolve the most recent review round directory for this branch (see [references/output-structure.md](references/output-structure.md)). Find the `_diff.patch` file and use its modification timestamp as the baseline. Run `git diff` scoped to files modified after that timestamp (`git diff --name-only` filtered by commit date, then full diff on those files only). If no prior round exists, fall back to the default full-scope diff. If changed files exceed 50% of total files in the branch diff, warn and suggest full review instead.
 
 ### Step 2b: Change Overview
 Show `git diff --stat` summary.
