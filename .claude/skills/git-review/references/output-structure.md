@@ -48,6 +48,7 @@ Thorough mode always persists review artifacts to `.claude/reviews/`, organized 
 | PR review | `pr-<number>` | `20260212-143022-pr-456` |
 | Commit review | `commit-<short-sha>` | `20260212-143022-commit-a1b2c3d` |
 | Specific files | `files` | `20260212-143022-files` |
+| Changed only | `delta` | `20260212-143022-delta` |
 
 ## File Reference
 
