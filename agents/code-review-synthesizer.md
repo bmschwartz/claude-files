@@ -16,6 +16,16 @@ When invoked you will receive:
 - A list of **failed reviews** (model + instance that failed), if any
 - A **focus filter** (optional) — e.g., `security`, `performance`, `tests`. If specified, only issues matching this focus area appear in the main output; others go to a "Filtered Issues" section
 - The **diff file path** (`_diff.patch`) for reference when resolving ambiguities
+- A **mode** flag: `initial` (default) or `re-synthesis`
+
+### Re-synthesis mode
+
+In re-synthesis mode, you will additionally receive:
+
+- A list of **rebuttal file paths** (`rebuttal-<REVIEWER>-C<N>.md`)
+- The **prior `REVIEW_SUMMARY.md`** path (containing the `## Conflicts` section from the initial synthesis)
+
+In this mode, read the prior Conflicts section to understand what was disputed, read each rebuttal file to see the reviewer's targeted response, then resolve each conflict. Update affected findings (adjust severity, change fix suggestion, update agreement level as needed). Replace the `## Conflicts` section with a `## Deliberation Outcomes` section. Re-number issues if any were merged or removed.
 
 ## Execution steps
 
@@ -59,7 +69,19 @@ When invoked you will receive:
    - **In focus** — issues matching the focus area (include in the main severity sections)
    - **Out of focus** — all other issues (list in a separate "Filtered Issues" section with severity, location, and title only — no code blocks)
 
-8. Write `REVIEW_SUMMARY.md` in the review directory with the following structure:
+8. **Conflict detection (initial mode only).** After categorizing all issues, scan for genuine **conflicts** — cases where two or more reviewers reach opposing conclusions about the same code. A conflict exists when:
+
+   - Two or more reviewers reference the same code location (within ~5 lines) AND reach **opposing conclusions** (one says the code is correct / should stay, the other says it's a bug / must change)
+   - OR two or more reviewers propose **mutually exclusive fixes** for the same issue (not just different wording — structurally incompatible approaches)
+
+   Conflicts are NOT:
+   - Disagreements on severity alone (already handled: use the higher severity)
+   - One reviewer finding something the other missed (that's just different coverage)
+   - Different wording for the same fix
+
+   For each conflict found, record: the code location, the two sides (reviewer name + position + rationale), which reviewer to re-engage (the one with weaker rationale or less codebase evidence), and a specific question to resolve the disagreement.
+
+9. Write `REVIEW_SUMMARY.md` in the review directory with the following structure:
 
 ```markdown
 # Code Review Summary
