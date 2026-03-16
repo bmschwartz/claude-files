@@ -1,6 +1,6 @@
 ---
 name: polish
-description: Semantic cleanup pass for committed work. Strips low-value comments and development artifacts, then audits tests by value tier. Use when the user wants to clean up code quality, remove development comments, audit test value, or prepare code for review. Also invoked automatically by /new-feature during the PR Handoff Gate.
+description: Semantic cleanup pass for committed work. Strips low-value comments and development artifacts, then audits tests by value tier. Use when the user wants to clean up code quality, remove development comments, audit test value, or prepare code for review. Also invoked automatically by /feature during the Complete phase.
 disable-model-invocation: true
 argument-hint: "[comments-only|tests-only] [path/glob]"
 ---
@@ -13,7 +13,7 @@ argument-hint: "[comments-only|tests-only] [path/glob]"
 
 Unlike `/deslop-around` (which targets mechanical patterns like `console.log` and TODO), `/polish` targets **semantic slop**: comments that reference the development process, docstrings that restate the obvious, and tests that don't justify their existence.
 
-Usable standalone or invoked automatically by `/new-feature` during the PR Handoff Gate.
+Usable standalone or invoked automatically by `/feature` during the Complete phase.
 
 ## Arguments
 
@@ -250,6 +250,6 @@ Present results:
 /polish src/features/        # Scope to specific path
 ```
 
-## Integration with /new-feature
+## Integration with /feature
 
-When invoked from the PR Handoff Gate in `/new-feature`, `/polish` runs in `full` mode on the current PR's branch diff. In this context, the confirmation gate still applies — findings are presented before any changes are made.
+When invoked from the Complete phase of `/feature`, `/polish` runs in `full` mode on the current PR's branch diff. In this context, the confirmation gate still applies — findings are presented before any changes are made.

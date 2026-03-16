@@ -1,6 +1,6 @@
 # Plan Review Prompt Template
 
-> This template generates `_review-prompt.md` for each reviewer. Fill in bracketed placeholders.
+> This template generates `_review-prompt.md` for plan/spec review rounds. Fill in bracketed placeholders.
 
 ```
 Review the implementation plan documents in this workspace. Read every file thoroughly before beginning your analysis.
@@ -53,10 +53,17 @@ If plan modifies LLM prompts: Will new language reliably produce intended behavi
 ### 8. Scalability & Performance
 Will this hold up under load? Obvious bottlenecks?
 
+## Severity Definitions
+
+- **CRITICAL**: Bugs, logic errors, security issues, or missing steps that would cause implementation to fail
+- **IMPORTANT**: Architectural concerns, significant gaps, or issues that would cause rework later
+- **MINOR**: Style improvements, nice-to-haves, or low-impact optimizations
+- **POTENTIAL**: Low-confidence concerns — flagged for human judgment
+
 ## Output Format
 
 For each dimension:
-- Severity-tagged rating: CRITICAL / IMPORTANT / MINOR / GOOD
+- Severity-tagged rating: CRITICAL / IMPORTANT / MINOR / POTENTIAL / GOOD
 - Cite specific files and sections from the plan AND the codebase
 - Concrete, actionable suggestions with implementation detail
 
