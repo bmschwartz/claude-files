@@ -4,7 +4,7 @@ description: Unified code and plan review with built-in Claude reviewers, option
 disable-model-invocation: true
 argument-hint: "[--type code|plan|spec] [--quick] [--external] [--changed-only] [--focus <area>] [--verdict-only] [--pr <number>] [files...]"
 model: opus
-allowed-tools: Read, Grep, Glob, Bash(git diff*, git log*, git branch*, git rev-parse*, git show*, git merge-base*, gh pr*, mkdir *, date *, which *)
+allowed-tools: Read, Write, Edit, Grep, Glob, Bash(git diff*, git log*, git branch*, git rev-parse*, git show*, git merge-base*, gh pr*, mkdir *, date *, which *)
 ---
 
 # Review
