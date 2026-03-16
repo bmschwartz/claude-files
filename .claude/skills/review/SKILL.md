@@ -172,7 +172,7 @@ Launch `<COUNT>` `review-executor` agents per external model. Each receives: typ
 
 #### Progress and error recovery
 
-Report progress as each reviewer completes. For missing/errored review files, note failure and continue. **Zero-success guard:** Stop if ALL reviews failed.
+Report progress as each reviewer completes. For missing/errored review files, note failure and continue. **Zero-success guard:** If ALL reviews failed, stop immediately, report the error to the user (list each reviewer's failure reason), and do not proceed to synthesis. No verdict is produced.
 
 ---
 

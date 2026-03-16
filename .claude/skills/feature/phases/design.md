@@ -49,7 +49,7 @@ Create `.claude/docs/[slug]/plans/<YYYYMMDD-HHMMSS>/SPEC.md` using the template 
 6. Test DRY: 3+ tests sharing setup → shared fixture
 7. Comment Policy: docstrings only for public APIs and non-obvious behavior
 
-**Critical tier — Spec Adversary:** Launch parallel `Explore` subagent that attempts to break the spec. Incorporate findings before continuing.
+**Critical tier — Spec Adversary (mandatory):** Launch parallel `Explore` subagent that attempts to break the spec. Incorporate findings before continuing. This is required for Critical tier — do not skip.
 
 ### 4. Generate Supporting Documents
 
@@ -67,6 +67,8 @@ Generate `PLAN.md` last (references other documents).
 If `verdict.decision != CONVERGED`: revise spec based on findings, re-review. Max 2 rounds. If still not converged, proceed to human gate with findings noted.
 
 ### 6. Human Gate
+
+If the design convergence loop ran and did not fully converge, present remaining findings alongside the spec so the developer has full context.
 
 Present spec to user: **Approve and start (Recommended)** | **Run /review --type plan** | **I have changes**
 
