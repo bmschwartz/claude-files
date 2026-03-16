@@ -97,6 +97,10 @@ When invoked you will receive:
    - File size
    - Whether the review completed successfully, succeeded on retry, or failed (and why)
 
+## Deliberation Mode
+
+This agent is also used during file-relay deliberation (conflict resolution). No separate mode is needed — the orchestrator simply provides a **rebuttal prompt file** as the review prompt. The rebuttal prompt contains the constrained question and context; the executor runs it identically to a normal review. The output file will be named `rebuttal-response-<MODEL>-C<N>.md` instead of `review-<MODEL>-<N>.md` — the orchestrator controls the output path.
+
 ## Rules
 
 - Do NOT interpret or summarize the review content. Your job is execution only.

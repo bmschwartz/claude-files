@@ -61,6 +61,8 @@ Address SPEC.md Refactoring Notes. Extract duplication, improve naming, apply Ex
 
 Launch a fresh `Explore` subagent to scan all code from Implement for: development artifact comments, low-value docstrings, restating comments, unnecessary abstractions, copy-paste duplication, and hygiene issues that survived self-check. Fix findings. Fresh context catches what self-review misses.
 
+**After fixing Anti-Slop findings:** Re-run full test suite to verify fixes didn't break anything. Git commit: `refactor([slug]): anti-slop cleanup`.
+
 ## Spec Feedback Loop
 
 Triggered when implementation reveals SPEC.md is wrong or incomplete. See the orchestrator's Spec Feedback Loop section for the full protocol.

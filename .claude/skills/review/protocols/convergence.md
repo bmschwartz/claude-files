@@ -32,13 +32,13 @@ The caller tracks iteration count, convergence trend, and safety limits. `/revie
 
 ## Convergence Trend (computed by callers)
 
-The verdict provides `findings.critical` and `findings.important` counts. Callers that iterate (like `/feature`) compare these counts across invocations:
+The verdict provides `findings.critical` and `findings.important` counts. Callers that iterate (like `/feature`) compare the **sum** of `findings.critical + findings.important` across invocations:
 
 | Trend | Condition | Action |
 |-------|-----------|--------|
-| `improving` | Count decreased vs prior iteration | Continue fixing |
-| `stalled` | Count unchanged | Escalate — fix approach may need rethinking |
-| `degrading` | Count increased | Escalate immediately |
+| `improving` | Sum decreased vs prior iteration | Continue fixing |
+| `stalled` | Sum unchanged (same total, even if individual severities shifted) | Escalate — fix approach may need rethinking |
+| `degrading` | Sum increased | Escalate immediately |
 
 ## Quorum
 

@@ -21,7 +21,7 @@ Update CHECKPOINT.md: Phase: Verify, Convergence Iteration: 0.
 
 Run `/review --type code --external --verdict-only`.
 
-Read the verdict block from the REVIEW_SUMMARY.md path.
+Read the verdict block from `REVIEW_SUMMARY.md` in the round directory reported by `/review`. The `verdict.round_dir` field contains the path. Parse the verdict between `<!-- VERDICT_START -->` and `<!-- VERDICT_END -->` markers.
 
 ### Triage
 

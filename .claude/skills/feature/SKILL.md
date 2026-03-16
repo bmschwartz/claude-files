@@ -31,7 +31,7 @@ Determine tier at the start. When ambiguous, start Light and escalate if complex
 |------|------|--------|--------|------------------|
 | **Light** | ≤3 files, no new modules, low risk | Explore → Design → Implement → Complete | `/review --quick` in Complete only | `autonomous` |
 | **Standard** | Typical feature | All phases | Full verify phase with `/review --external` | `supervised` |
-| **Critical** | Security, data model, public API, financial | All phases + spec adversary | Full verify + tighter cap (2 iterations) | `guided` |
+| **Critical** | Security, data model, public API, financial | All phases + mandatory spec adversary | Full verify + tighter cap (2 iterations) | `guided` |
 
 ### Autonomy Modes
 
@@ -99,7 +99,7 @@ Read the phase contract file for the current phase. Check its receives/produces/
 | Verify | [phases/verify.md](${CLAUDE_SKILL_DIR}/phases/verify.md) | `/review` verdict: CONVERGED (or cap with human acceptance) |
 | Complete | [phases/complete.md](${CLAUDE_SKILL_DIR}/phases/complete.md) | PR ready, retrospective written |
 
-**Light tier:** Skip Verify phase. Run `/review --type code --quick` in Complete instead.
+**Light tier:** Skip Verify phase. Run `/review --type code --quick` in Complete instead. If that quick review finds CRITICAL issues, Light tier may **escalate**: the developer chooses between fix-and-rerun-quick, entering full Verify (one-time tier override), or accepting with per-CRITICAL acknowledgement. Escalation to Verify does not reclassify the feature — it runs one Verify cycle and returns to Complete.
 
 **Pre-existing feature path:** If all implementation phases resolve via "behavior pre-existed" with no net code changes, skip Verify → Complete with "feature pre-existed" path.
 
@@ -119,10 +119,10 @@ Read CLAUDE.md for breadcrumbs. If found, handle per [references/checkpoint.md](
 Triggered when implementation reveals SPEC.md is wrong or incomplete. Can occur during Implement or Verify phases.
 
 1. Stop at current point. Document: spec says X, reality requires Y.
-2. **Significant change** (acceptance criteria, phases, public API, security, scope): new version snapshot, update PLAN.md + CHECKPOINT.md, **hard gate — do not resume without developer approval**.
+2. **Significant change** (acceptance criteria, phases, public API, security, scope): new version snapshot, update PLAN.md + CHECKPOINT.md, **hard gate — do not resume without developer approval**. After approval, **resume at the current phase and substep** — do not return to Design. The spec change is applied in place; the current phase continues with the updated spec.
 3. **Minor clarification**: edit in place, log in Iteration Log, proceed.
 4. Default: treat as significant.
-5. **Circuit breaker:** >3 revisions in one phase → ask developer: continue | re-scope | return to Design.
+5. **Circuit breaker:** >3 revisions in a single implementation phase (counter resets per phase) → ask developer: continue | re-scope | return to Design.
 6. After spec change in Verify: restart Verify with `--changed-only`.
 
 ---
@@ -139,12 +139,14 @@ Triggered when implementation reveals SPEC.md is wrong or incomplete. Can occur 
 
 ## Tool Reference
 
+> **Note:** `Explore` and `Plan` are **built-in Claude Code subagent types** (passed via `subagent_type` parameter to the Agent tool). They are not custom agent files in `agents/`. `Explore` specializes in codebase search/analysis; `Plan` specializes in architecture planning.
+
 | Phase | Tool / Agent | Purpose |
 |-------|-------------|---------|
 | Explore | `Explore` (×2, or ×1 Light) | Pattern + architecture discovery |
 | Explore | `feature-dev:code-explorer` (Standard/Critical) | Deep execution path tracing |
 | Design | `feature-dev:code-architect` or `Plan` (Light) | Architecture blueprint |
-| Design | `Explore` (Critical only) | Spec adversary (read-only) |
+| Design | `Explore` (Critical — mandatory) | Spec adversary (read-only) |
 | Design | `/review --type spec` (optional) | Multi-model spec review |
 | Implement | `Explore` subagent | Anti-slop scan (fresh context) |
 | Verify | `/review --type code --external --verdict-only` | Adversarial review + convergence |

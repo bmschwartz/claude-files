@@ -21,9 +21,13 @@ When invoked you will receive:
 - Optional: a **focus filter** (code type only) — e.g., `security`, `performance`, `tests`
 - Optional: a **prior REVIEW_SUMMARY.md path** (plan/spec type, for previously-addressed filtering; also used in re-synthesis mode)
 
+### Invocation interface
+
+All inputs are passed as structured parameters in the **agent invocation message** (the prompt passed to the Agent tool). The orchestrator constructs the message with all paths and lists inline. The synthesizer does not discover inputs by scanning the filesystem.
+
 ### Re-synthesis mode
 
-In re-synthesis mode, you will additionally receive:
+In re-synthesis mode, you will additionally receive (in the invocation message):
 
 - A list of **rebuttal file paths** (`rebuttal-response-<REVIEWER>-C<N>.md`)
 - The **prior `REVIEW_SUMMARY.md`** path (containing the `## Conflicts` section from the initial synthesis)
