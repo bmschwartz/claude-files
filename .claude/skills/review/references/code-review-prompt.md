@@ -1,6 +1,6 @@
-# External Model Review Prompt Template
+# Code Review Prompt Template
 
-> This template is used to generate `_review-prompt.md` for external model reviewers. Fill in the bracketed placeholders.
+> This template generates `_review-prompt.md` for code review rounds. Fill in bracketed placeholders.
 
 ```
 Review the code changes (diff) in this workspace. The diff file is at: <DIFF_PATH>
@@ -13,7 +13,7 @@ Read the entire diff before beginning your analysis. Then use the project codeba
 </If>
 
 ## Codebase Patterns (from automated analysis)
-<Phase 0 patterns discovered in Step 0c>
+<Phase 1 patterns discovered by Explore agent>
 
 <If spec docs exist>
 ## Feature Specification Context
@@ -39,7 +39,7 @@ Evaluate the changes on:
 2. **Correctness** — Logic errors, wrong assumptions, misuse of APIs/libraries, regression risk
 3. **Error Handling** — Missing error handling that could crash, unhandled edge cases, resource leaks
 4. **Performance** — N+1 queries, inefficient algorithms, unnecessary allocations, missing caching
-5. **Pattern Compliance** — Does the code follow established codebase patterns? Deviations that risk correctness/security are CRITICAL; style deviations are IMPORTANT.
+5. **Pattern Compliance** — Does the code follow established codebase patterns? Deviations risking correctness/security are CRITICAL; style deviations are IMPORTANT.
 6. **Test Coverage** — Are changes tested? Do tests follow existing test patterns?
 7. **Dependencies** — Are new dependencies safe? Major version bumps? Known CVEs?
 
