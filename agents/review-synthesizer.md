@@ -292,45 +292,41 @@ In re-synthesis mode, replace the `## Conflicts` section with:
 
 ## Verdict Block
 
-Append this fenced YAML block at the very end of every `REVIEW_SUMMARY.md`, after all other sections:
+Append this YAML block at the very end of every `REVIEW_SUMMARY.md`, after all other sections. Wrap it in HTML comment markers for reliable parsing:
 
-```
-<!-- VERDICT_START -->
-```yaml
-verdict:
-  schema_version: 1
-  type: <code | plan | spec>
-  decision: <CONVERGED | NEEDS_FIXES | BLOCK>
-  timestamp: "<YYYYMMDD-HHMMSS>"
-  round_dir: "<path to this round directory>"
-  findings:
-    critical: <count>
-    important: <count>
-    minor: <count>
-    potential: <count>
-  agreements:
-    strong: <count>
-    moderate: <count>
-    single: <count>
-  conflicts:
-    detected: <count>
-    resolved: <count>
-    unresolved: <count>
-  reviewers:
-    total: <count>
-    succeeded: <count>
-    failed: <count>
-    models: [<list of model identifiers>]
-  human_input_required:
-    count: <count>
-    items:
-      - id: "<NI-N>"
-        title: "<short title>"
-        severity: <CRITICAL | IMPORTANT>
-  previously_addressed: <count>
-```
-<!-- VERDICT_END -->
-```
+    <!-- VERDICT_START -->
+    verdict:
+      schema_version: 1
+      type: <code | plan | spec>
+      decision: <CONVERGED | NEEDS_FIXES | BLOCK>
+      timestamp: "<YYYYMMDD-HHMMSS>"
+      round_dir: "<path to this round directory>"
+      findings:
+        critical: <count>
+        important: <count>
+        minor: <count>
+        potential: <count>
+      agreements:
+        strong: <count>
+        moderate: <count>
+        single: <count>
+      conflicts:
+        detected: <count>
+        resolved: <count>
+        unresolved: <count>
+      reviewers:
+        total: <count>
+        succeeded: <count>
+        failed: <count>
+        models: [<list of model identifiers>]
+      human_input_required:
+        count: <count>
+        items:
+          - id: "<NI-N>"
+            title: "<short title>"
+            severity: <CRITICAL | IMPORTANT>
+      previously_addressed: <count>
+    <!-- VERDICT_END -->
 
 **Decision logic:**
 - `BLOCK` — findings.critical > 0, OR conflicts.unresolved > 0
