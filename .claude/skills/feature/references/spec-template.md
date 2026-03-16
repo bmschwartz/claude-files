@@ -29,15 +29,17 @@ A: [Answer provided]
 
 ## Key Insights
 
-★ [Insight about architectural decision]
-★ [Insight about trade-offs made]
-★ [Insight about codebase patterns]
+- [Insight about architectural decision]
+- [Insight about trade-offs made]
+- [Insight about codebase patterns]
 
 ## Risk Assessment
 
 | Risk Type | Level | Details | Mitigation |
 |-----------|-------|---------|------------|
-| [Type] | [Level] | [Details] | [Strategy] |
+| Pattern Deviation | [Level] | [Details] | [Strategy] |
+| Dependency Impact | [Level] | [Details] | [Strategy] |
+| Testing Coverage | [Level] | [Details] | [Strategy] |
 
 ## Requirements
 
@@ -66,6 +68,8 @@ A: [Answer provided]
 - [ ] [Test description] (Impact: HIGH/MEDIUM/LOW)
 - [ ] [Test description] (Impact: HIGH/MEDIUM/LOW)
 
+> Target: ≥50% HIGH impact, ≤25% LOW impact
+
 #### Refactoring Notes
 - [Cleanup expected after green]
 
@@ -87,7 +91,6 @@ A: [Answer provided]
 
 ### Integration Tests
 - [ ] Test scenario 1: [Description]
-- [ ] Test scenario 2: [Description]
 
 ### Manual Testing Checklist
 - [ ] User workflow 1
