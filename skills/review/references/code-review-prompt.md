@@ -23,6 +23,16 @@ Read the entire diff before beginning your analysis. Then use the project codeba
 <FIXTURES.md content>
 </If>
 
+<If project learnings matched>
+## Known Project Learnings
+
+The following patterns have been identified in prior reviews of this codebase. Pay special attention to whether the current changes exhibit these patterns:
+
+<Numbered list of matched learnings per injection format from learning-injection.md>
+
+When evaluating changes, cross-reference against these known patterns. If a change matches a known learning, flag it explicitly and reference the learning ID. If a change deliberately avoids a previously-identified pattern, note that as a positive signal.
+</If>
+
 <If PR metadata exists>
 ## Pull Request Metadata
 - Title: <title>
