@@ -64,6 +64,11 @@ Present: what was built, files changed, test coverage, TDD compliance, convergen
 ## What Was Difficult
 - [Surprises, blockers, spec changes needed]
 
+## Review Learnings
+- Learnings created during this feature: [list IDs or "none"]
+- Learnings matched during reviews: [list IDs or "none"]
+- Promotions to CLAUDE.md: [list or "none"]
+
 ## Patterns to Reuse
 - [Patterns discovered that other features should use]
 
@@ -74,6 +79,8 @@ Present: what was built, files changed, test coverage, TDD compliance, convergen
 **Light tier:** Omit convergence metrics (no Verify phase). Note "IMPORTANT/MINOR not assessed (quick review mode)."
 
 **Suggested Rules gate:** Present any "Suggested Rules" to the developer for approval before adding to CLAUDE.md — **hard gate in all autonomy modes** to prevent instruction creep.
+
+**Deferred learning candidates:** When `/review --verdict-only` returned verdicts containing `learning_candidates.items` during this feature's Verify phase, process them now. Check `.claude/learnings/LEARNINGS.md` for any learnings whose `source.feature` matches this feature's slug, and check verdict blocks from this feature's review rounds for unprocessed `learning_candidates`. For each candidate: present to developer with Save | Skip | Edit scope options (unless `autonomous` mode, in which case auto-accept). Write accepted learnings to `.claude/learnings/` per the review skill's `references/learning-schema.md`. Populate the retrospective's "Review Learnings" section with the results.
 
 ## Wrap-Up
 

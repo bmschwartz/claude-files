@@ -1,15 +1,15 @@
 ---
 name: review
-description: Unified code and plan review with built-in Claude reviewers, optional multi-model analysis, file-relay deliberation, and structured verdicts. Reviews code diffs, implementation plans, or specs. Use when the user wants a code review, says "review my code", "check my changes", wants to validate a spec/plan, or when invoked by /feature during design or verification phases. Supports --quick for fast reviews, --external for multi-model, --focus for targeted analysis, and --verdict-only for programmatic consumption.
+description: Unified code and plan review with built-in Claude reviewers, optional multi-model analysis, file-relay deliberation, and structured verdicts. Extracts durable review learnings and injects them into future reviews. Reviews code diffs, implementation plans, or specs. Use when the user wants a code review, says "review my code", "check my changes", wants to validate a spec/plan, or when invoked by /feature during design or verification phases. Supports --quick for fast reviews, --external for multi-model, --focus for targeted analysis, and --verdict-only for programmatic consumption.
 disable-model-invocation: true
-argument-hint: "[--type code|plan|spec] [--quick] [--external] [--changed-only] [--focus <area>] [--verdict-only] [--pr <number>] [files...]"
+argument-hint: "[--type code|plan|spec] [--quick] [--external] [--changed-only] [--focus <area>] [--verdict-only] [--no-learn] [--auto-learn] [--pr <number>] [files...]"
 model: opus
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(git diff*, git log*, git branch*, git rev-parse*, git show*, git merge-base*, gh pr*, mkdir *, date *, which *)
 ---
 
 # Review
 
-> **v1.0.0** · Unified review skill. Replaces `/git-review` v3.1.0 and `/plan-review` v1.3.0.
+> **v1.1.0** · Unified review skill with learning extraction.
 
 A unified review skill that orchestrates parallel AI reviewers, synthesizes findings with conflict detection, optionally runs file-relay deliberation to resolve reviewer disagreements, and produces a structured verdict. Parameterized by `--type` to handle code diffs, implementation plans, and specs through the same pipeline.
 
@@ -64,6 +64,8 @@ A unified review skill that orchestrates parallel AI reviewers, synthesizes find
 |------|--------|
 | `--verdict-only` | Produce REVIEW_SUMMARY.md + verdict, skip post-synthesis interaction |
 | `--no-deliberation` | Skip deliberation even if conflicts detected |
+| `--no-learn` | Skip learning extraction (Phase 4.7) entirely |
+| `--auto-learn` | Auto-accept learning candidates without human gate |
 
 **Default external models:** `composer-1.5`, `gpt-5.4-high-fast`, `gemini-3.1-pro`
 
@@ -140,14 +142,16 @@ Read `PLAN.md`, extract current version path, verify directory exists. Read all 
 5. Create round directory per [references/output-structure.md](${CLAUDE_SKILL_DIR}/references/output-structure.md)
 6. Save `_diff.patch`
 7. Write `_review-prompt.md` using [references/code-review-prompt.md](${CLAUDE_SKILL_DIR}/references/code-review-prompt.md)
+8. **Inject learnings:** Read [references/learning-injection.md](${CLAUDE_SKILL_DIR}/references/learning-injection.md). Scan `.claude/learnings/` for active learnings matching diff file paths. If matches found, append the `## Known Project Learnings` section to `_review-prompt.md` per the injection format. Cap at 10. Run the staleness check on all evaluated learnings.
 
-**Quick mode:** Skip steps 5-7. Perform direct in-context analysis focusing on CRITICAL issues only. Skip all remaining phases.
+**Quick mode:** Skip steps 5-8. Perform direct in-context analysis focusing on CRITICAL issues only. Skip all remaining phases.
 
 #### Plan/Spec type
 
 1. Generate timestamp: `REVIEW_TIMESTAMP=$(date +%Y%m%d-%H%M%S)`
 2. Create: `mkdir -p <plan-root>/reviews/<REVIEW_TIMESTAMP>/`
 3. Write `_review-prompt.md` using [references/plan-review-prompt.md](${CLAUDE_SKILL_DIR}/references/plan-review-prompt.md)
+4. **Inject learnings:** Read [references/learning-injection.md](${CLAUDE_SKILL_DIR}/references/learning-injection.md). Scan `.claude/learnings/` for active learnings matching plan document file paths. If matches found, append the `## Known Project Learnings` section to `_review-prompt.md` per the injection format. Cap at 10. Run the staleness check on all evaluated learnings.
 
 ---
 
@@ -211,6 +215,28 @@ Read the full deliberation protocol at [protocols/deliberation.md](${CLAUDE_SKIL
 6. Verify updated `REVIEW_SUMMARY.md` replaces Conflicts with Deliberation Outcomes
 
 **Cap:** 1 round. Unresolved conflicts → `verdict.conflicts.unresolved > 0` → `decision: BLOCK`.
+
+---
+
+### Phase 4.7: Learning Extraction
+
+**Contract:**
+- **Receives:** `REVIEW_SUMMARY.md` with verdict block
+- **Produces:** Learning files in `.claude/learnings/` (interactive mode) or `learning_candidates` in verdict block (`--verdict-only` mode)
+- **Invariants:** Never fails the review. Existing learnings never deleted (only updated or expired).
+
+**Skip if:** `--no-learn` or `--quick`.
+
+Read the full extraction protocol at [protocols/learning-extraction.md](${CLAUDE_SKILL_DIR}/protocols/learning-extraction.md).
+
+**Summary:**
+1. Parse findings from REVIEW_SUMMARY.md (severity >= IMPORTANT, agreement >= Moderate)
+2. Load existing learnings from `.claude/learnings/`
+3. Match candidates against existing learnings (LLM-assisted recurrence detection)
+4. **Interactive mode** (no `--verdict-only`, no `--auto-learn`): present candidates via human gate — Save | Skip | Edit scope. For 3+ occurrence promotions, offer CLAUDE.md rule promotion.
+5. **`--verdict-only` mode:** Embed candidates in verdict block as `learning_candidates` field. Do not write learning files — the calling skill handles persistence.
+6. **`--auto-learn` mode:** Auto-accept all candidates, auto-promote promotions.
+7. Persist accepted learnings: write/update learning files, update `.claude/learnings/LEARNINGS.md` index.
 
 ---
 
@@ -299,6 +325,7 @@ See [references/output-format.md](${CLAUDE_SKILL_DIR}/references/output-format.m
 - **Fail gracefully** — Continue with partial results; zero-success guard stops
 - **Always persist in thorough mode** — Every round creates an audit trail
 - **Immutability** — Raw `review-*.md` files never modified after creation
+- **Learnings accumulate** — Durable patterns extracted from reviews improve future reviews without manual curation
 
 ## Additional Resources
 
@@ -306,10 +333,13 @@ See [references/output-format.md](${CLAUDE_SKILL_DIR}/references/output-format.m
   - [protocols/synthesis.md](${CLAUDE_SKILL_DIR}/protocols/synthesis.md) — Cross-referencing rules, agreement thresholds, severity definitions
   - [protocols/deliberation.md](${CLAUDE_SKILL_DIR}/protocols/deliberation.md) — File-relay conflict resolution protocol
   - [protocols/convergence.md](${CLAUDE_SKILL_DIR}/protocols/convergence.md) — Verdict decision logic, when to stop reviewing
+  - [protocols/learning-extraction.md](${CLAUDE_SKILL_DIR}/protocols/learning-extraction.md) — Learning extraction and recurrence detection (Phase 4.7)
 
 - **References:**
   - [references/code-review-prompt.md](${CLAUDE_SKILL_DIR}/references/code-review-prompt.md) — Code review prompt template for external reviewers
   - [references/plan-review-prompt.md](${CLAUDE_SKILL_DIR}/references/plan-review-prompt.md) — Plan review prompt template for external reviewers
-  - [references/verdict-schema.md](${CLAUDE_SKILL_DIR}/references/verdict-schema.md) — Verdict block schema documentation
+  - [references/verdict-schema.md](${CLAUDE_SKILL_DIR}/references/verdict-schema.md) — Verdict block schema documentation (v2)
   - [references/output-structure.md](${CLAUDE_SKILL_DIR}/references/output-structure.md) — Directory layout, branch sanitization, scope suffixes
   - [references/output-format.md](${CLAUDE_SKILL_DIR}/references/output-format.md) — Complete code review output format (sections 0-13)
+  - [references/learning-schema.md](${CLAUDE_SKILL_DIR}/references/learning-schema.md) — Learning file frontmatter specification
+  - [references/learning-injection.md](${CLAUDE_SKILL_DIR}/references/learning-injection.md) — Scope matching and injection into prompts

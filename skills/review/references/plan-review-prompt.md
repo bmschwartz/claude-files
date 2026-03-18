@@ -17,6 +17,16 @@ The plan documents follow these conventions:
 
 Not all documents may be present. Evaluate what exists.
 
+<If project learnings matched>
+## Known Project Learnings
+
+The following patterns have been identified in prior reviews of this codebase. Evaluate whether the proposed plan addresses or risks repeating these patterns:
+
+<Numbered list of matched learnings per injection format from learning-injection.md>
+
+When evaluating the plan, cross-reference against these known patterns. Plans that proactively address known learnings should be noted positively. Plans that risk repeating known issues should be flagged with the learning ID.
+</If>
+
 ## Codebase Verification (CRITICAL)
 
 You have access to the actual project codebase. **Actively verify every claim the plan makes about the codebase.** Do not take the plan's word for it. Specifically:
