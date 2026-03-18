@@ -4,7 +4,7 @@ description: Unified code and plan review with built-in Claude reviewers, option
 disable-model-invocation: true
 argument-hint: "[--type code|plan|spec] [--quick] [--external] [--changed-only] [--focus <area>] [--verdict-only] [--no-learn] [--auto-learn] [--pr <number>] [files...]"
 model: opus
-allowed-tools: Read, Write, Edit, Grep, Glob, Bash(git diff*, git log*, git branch*, git rev-parse*, git show*, git merge-base*, gh pr*, mkdir *, date *, which *)
+allowed-tools: Read, Write, Edit, Grep, Glob, Bash(git diff*, git log*, git branch*, git rev-parse*, git show*, git merge-base*, gh pr*, mkdir *, date *, which *, python3 */scripts/run_reviewers.py*)
 ---
 
 # Review
@@ -172,7 +172,15 @@ Launch `<COUNT>` `Explore` agents (`model: "opus"`, `subagent_type: "Explore"`).
 
 #### External reviewers (with `--external` or when `agent` CLI available for plan/spec)
 
-Launch `<COUNT>` `review-executor` agents per external model. Each receives: type, model, instance number, project root, review prompt path, output directory, and the type-specific input (diff path or plan directory).
+Build a JSON configuration object with one task per (model, instance) combination. Each task specifies: `model`, `instance`, `type`, `project_root`, `review_prompt_path`, `output_path` (`<ROUND_DIR>/review-<MODEL>-<N>.md`), `input_path` (diff file or plan directory), and `input_type` (`diff` or `plan_dir`). Model names must match `[a-zA-Z0-9._-]+`. Each `(model, instance)` pair must be unique. At the top level of the JSON config (not per-task), include `timeout_seconds` (default 300), `retry_count` (default 1), `retry_delay_seconds` (default 10).
+
+Run the reviewer script:
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/run_reviewers.py" <<< '<JSON_CONFIG>'
+```
+
+Parse the JSON output from stdout. Each result has `status` (`success`, `retry_success`, or `failed`), `output_path`, and `file_size`. Failed reviewers are noted for the zero-success guard and synthesis metadata. Progress lines appear on stderr.
 
 #### Progress and error recovery
 
@@ -209,7 +217,7 @@ Read the full deliberation protocol at [protocols/deliberation.md](${CLAUDE_SKIL
 **Summary:**
 1. Read conflicts from `REVIEW_SUMMARY.md`
 2. For each conflict, write `rebuttal-<REVIEWER>-C<N>.md` with the opposing position and specific question
-3. Launch targeted reviewer (Explore for internal, review-executor for external) with constrained prompt
+3. Launch targeted reviewer: Explore agent for internal reviewers, or `run_reviewers.py` script for external (build a single-task JSON config with the rebuttal prompt as `review_prompt_path`)
 4. Capture response to `rebuttal-response-<REVIEWER>-C<N>.md`
 5. Re-invoke synthesizer in `re-synthesis` mode with rebuttal files
 6. Verify updated `REVIEW_SUMMARY.md` replaces Conflicts with Deliberation Outcomes
@@ -312,8 +320,13 @@ See [references/output-format.md](${CLAUDE_SKILL_DIR}/references/output-format.m
 
 | Agent | Purpose | When used | Model |
 |-------|---------|-----------|-------|
-| `review-executor` | Runs `agent` CLI for external model reviews | `--external` or plan/spec external | `haiku` (executor) |
 | `review-synthesizer` | Synthesizes findings into `REVIEW_SUMMARY.md` with verdict | Thorough mode, all types | `opus` |
+
+### Scripts (from `skills/review/scripts/`)
+
+| Script | Purpose | When used |
+|--------|---------|-----------|
+| `run_reviewers.py` | Runs `agent` CLI concurrently for all external reviewers | Phase 3 external, Phase 4.5 external deliberation |
 
 ---
 

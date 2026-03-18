@@ -64,7 +64,7 @@ For each rebuttal prompt:
 <ROUND_DIR>/rebuttal-response-<REVIEWER>-C<N>.md
 ```
 
-**External reviewers:** Launch a `review-executor` agent with a constrained prompt: "Read the rebuttal request at `<path>` and the relevant code/plan section. Respond to the specific question only. Do not perform a full re-review." Capture output to the rebuttal-response file.
+**External reviewers:** Build a single-task JSON config for `run_reviewers.py` with the rebuttal prompt file as `review_prompt_path` and the rebuttal-response path as `output_path`. Run via `python3 "${CLAUDE_SKILL_DIR}/scripts/run_reviewers.py"`. Parse the JSON result to confirm success.
 
 ### Step 4: Re-synthesis
 
