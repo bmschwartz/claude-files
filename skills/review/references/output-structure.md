@@ -78,9 +78,9 @@ Thorough mode always persists review artifacts. Quick mode only persists when `-
 | `_diff.patch` | The diff that was reviewed (audit trail, code type) | Phase 2 |
 | `review-claude-code-<N>.md` | Review from built-in Claude reviewer (code) | Orchestrator writes after Explore agent completes |
 | `review-opus-internal-<N>.md` | Review from built-in reviewer (plan/spec) | Orchestrator writes after Explore agent completes |
-| `review-<MODEL>-<N>.md` | Review from external model (immutable) | `review-executor` agent |
+| `review-<MODEL>-<N>.md` | Review from external model (immutable) | `run_reviewers.py` script |
 | `REVIEW_SUMMARY.md` | Synthesized summary + verdict block | `review-synthesizer` agent |
 | `rebuttal-<REVIEWER>-C<N>.md` | Rebuttal prompt (deliberation) | Orchestrator |
-| `rebuttal-response-<REVIEWER>-C<N>.md` | Reviewer response (deliberation) | Orchestrator / review-executor |
+| `rebuttal-response-<REVIEWER>-C<N>.md` | Reviewer response (deliberation) | Orchestrator / `run_reviewers.py` |
 
 **Immutability rule:** Raw `review-*.md` files and `rebuttal-*.md` files must never be modified after creation. `REVIEW_SUMMARY.md` may be updated with apply/skip status in Phase 5.
