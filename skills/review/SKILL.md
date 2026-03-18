@@ -172,7 +172,7 @@ Launch `<COUNT>` `Explore` agents (`model: "opus"`, `subagent_type: "Explore"`).
 
 #### External reviewers (with `--external` or when `agent` CLI available for plan/spec)
 
-Build a JSON configuration object with one task per (model, instance) combination. Each task specifies: `model`, `instance`, `type`, `project_root`, `review_prompt_path`, `output_path` (`<ROUND_DIR>/review-<MODEL>-<N>.md`), `input_path` (diff file or plan directory), and `input_type` (`diff` or `plan_dir`). Include `timeout_seconds` (default 300), `retry_count` (default 1), `retry_delay_seconds` (default 10).
+Build a JSON configuration object with one task per (model, instance) combination. Each task specifies: `model`, `instance`, `type`, `project_root`, `review_prompt_path`, `output_path` (`<ROUND_DIR>/review-<MODEL>-<N>.md`), `input_path` (diff file or plan directory), and `input_type` (`diff` or `plan_dir`). Model names must match `[a-zA-Z0-9._-]+`. Each `(model, instance)` pair must be unique. At the top level of the JSON config (not per-task), include `timeout_seconds` (default 300), `retry_count` (default 1), `retry_delay_seconds` (default 10).
 
 Run the reviewer script:
 
