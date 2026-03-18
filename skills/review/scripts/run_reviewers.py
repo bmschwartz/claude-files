@@ -11,7 +11,7 @@ Stdlib only — no pip dependencies.
 
 import asyncio
 import json
-import os
+import re
 import shutil
 import signal
 import sys
@@ -20,6 +20,11 @@ from pathlib import Path
 
 # Track running processes for signal-handler cleanup
 _running_procs: list[asyncio.subprocess.Process] = []
+
+# Track whether a signal interrupted execution
+_signal_received: int = 0
+
+_SAFE_MODEL_RE = re.compile(r'^[a-zA-Z0-9._-]+$')
 
 
 def log(msg: str) -> None:
@@ -35,6 +40,7 @@ def validate_config(config: dict) -> None:
         raise ValueError("Tasks list is empty")
     required = {"model", "instance", "type", "project_root",
                 "review_prompt_path", "output_path", "input_path", "input_type"}
+    seen_pairs: set[tuple[str, int]] = set()
     for i, task in enumerate(config["tasks"]):
         missing = required - set(task.keys())
         if missing:
@@ -43,6 +49,19 @@ def validate_config(config: dict) -> None:
             raise ValueError(f"Task {i} has invalid type: {task['type']}")
         if task["input_type"] not in ("diff", "plan_dir"):
             raise ValueError(f"Task {i} has invalid input_type: {task['input_type']}")
+        if not _SAFE_MODEL_RE.match(str(task["model"])):
+            raise ValueError(
+                f"Task {i} has unsafe model name: {task['model']!r} "
+                f"(must match {_SAFE_MODEL_RE.pattern})"
+            )
+        pair = (str(task["model"]), int(task["instance"]))
+        if pair in seen_pairs:
+            raise ValueError(f"Task {i} has duplicate (model, instance): {pair}")
+        seen_pairs.add(pair)
+
+    timeout = config.get("timeout_seconds", 300)
+    if not isinstance(timeout, (int, float)) or timeout <= 0:
+        raise ValueError(f"timeout_seconds must be positive, got {timeout}")
 
 
 def build_preamble(task: dict) -> str:
@@ -126,14 +145,20 @@ async def run_single_reviewer(
             )
         except asyncio.TimeoutError:
             proc.kill()
-            await proc.wait()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                pass
             raise
         finally:
             if proc in _running_procs:
                 _running_procs.remove(proc)
 
     duration = time.monotonic() - start
-    file_size = output_path.stat().st_size if output_path.exists() else 0
+    try:
+        file_size = output_path.stat().st_size
+    except FileNotFoundError:
+        file_size = 0
 
     if proc.returncode != 0:
         raise RuntimeError(
@@ -166,6 +191,7 @@ async def run_with_retry(
 
     try:
         log(f"Starting {label}...")
+        last_error = "Unknown error"
 
         for attempt in range(1 + retry_count):
             try:
@@ -197,7 +223,15 @@ async def run_with_retry(
                 else:
                     log(f"{label} failed - {last_error}")
 
-        # All attempts exhausted
+        # All attempts exhausted — write error to output file for debuggability
+        error_msg = f"{last_error} (all {1 + retry_count} attempts)"
+        try:
+            Path(task["output_path"]).write_text(
+                f"# Review failed\n\n{error_msg}\n"
+            )
+        except OSError:
+            pass
+
         return {
             "model": task["model"],
             "instance": task["instance"],
@@ -205,7 +239,7 @@ async def run_with_retry(
             "status": "failed",
             "file_size": 0,
             "duration_seconds": 0,
-            "error": f"{last_error} (all {1 + retry_count} attempts)",
+            "error": error_msg,
         }
     finally:
         cleanup_prompt_file(combined_prompt_path)
@@ -262,19 +296,29 @@ async def run_all(config: dict) -> dict:
 
 
 def install_signal_handlers(loop: asyncio.AbstractEventLoop) -> None:
-    """Install handlers to kill child processes on SIGTERM/SIGINT."""
+    """Install handlers to kill child processes on SIGTERM/SIGINT.
+
+    Uses loop.stop() instead of sys.exit() so that coroutine finally
+    blocks execute (cleaning up temp files and file descriptors).
+    """
+    global _signal_received
+
     def handle_signal(sig: int) -> None:
+        global _signal_received
+        _signal_received = sig
         log(f"Received signal {sig}, killing {len(_running_procs)} running processes...")
         for proc in list(_running_procs):
             try:
                 proc.kill()
             except ProcessLookupError:
                 pass
-        # Re-raise to exit
-        sys.exit(128 + sig)
+        loop.stop()
 
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, handle_signal, sig)
+    try:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, handle_signal, sig)
+    except NotImplementedError:
+        pass  # Windows does not support add_signal_handler
 
 
 def main() -> None:
@@ -306,11 +350,19 @@ def main() -> None:
     install_signal_handlers(loop)
     try:
         output = loop.run_until_complete(run_all(config))
+    except RuntimeError:
+        # loop.stop() was called by signal handler; loop.run_until_complete raises
+        output = None
     finally:
         loop.close()
 
+    if _signal_received:
+        log(f"Exiting due to signal {_signal_received}")
+        sys.exit(128 + _signal_received)
+
     # Write structured result to stdout
-    print(json.dumps(output, indent=2))
+    if output is not None:
+        print(json.dumps(output, indent=2))
 
 
 if __name__ == "__main__":
