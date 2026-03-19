@@ -67,7 +67,7 @@ A unified review skill that orchestrates parallel AI reviewers, synthesizes find
 | `--no-learn` | Skip learning extraction (Phase 4.7) entirely |
 | `--auto-learn` | Auto-accept learning candidates without human gate |
 
-**Default external models:** `composer-1.5`, `gpt-5.4-high-fast`, `gemini-3.1-pro`
+**Default external models:** `composer-2-fast`, `gpt-5.4-medium-fast`, `gemini-3-flash`
 
 ---
 
@@ -76,8 +76,31 @@ A unified review skill that orchestrates parallel AI reviewers, synthesizes find
 - Agent CLI available: !`which agent 2>/dev/null && echo "yes" || echo "no"`
 - Current branch: !`git branch --show-current 2>/dev/null || echo "detached"`
 - Repository root: !`git rev-parse --show-toplevel 2>/dev/null || echo "not a git repo"`
+- Git prefix (CWD relative to repo root): !`git rev-parse --show-prefix 2>/dev/null || echo ""`
 - Staged files: !`git diff --cached --name-only 2>/dev/null`
 - Unstaged files: !`git diff --name-only 2>/dev/null`
+
+---
+
+## Workspace Scoping
+
+Reviewers receive the directory where `/review` was invoked, not the full git repository root. When invoked from a subdirectory, this structurally prevents cross-contamination via `--workspace` scoping. When invoked from the repository root, worktree directories are excluded via advisory prompt instructions (reviewers are instructed not to explore them, but this is not structurally enforced by the `--workspace` flag).
+
+### Computing PROJECT_ROOT
+
+- **`GIT_ROOT`**: `git rev-parse --show-toplevel`
+- **`GIT_PREFIX`**: `git rev-parse --show-prefix` (CWD relative to git root; empty string if CWD == git root)
+- **`PROJECT_ROOT`**: The current working directory (= `GIT_ROOT` when `GIT_PREFIX` is empty)
+
+### Worktree Exclusion
+
+- **`GIT_PREFIX` is empty** (CWD is git/worktree root): Set `EXCLUDE_DIRS` to `[".claude/worktrees"]` (advisory; communicated via prompt instructions)
+- **`GIT_PREFIX` is non-empty** (CWD is a subdirectory): Set `EXCLUDE_DIRS` to `[]` — worktrees at `.claude/worktrees/` are outside `PROJECT_ROOT` already
+- **Running from within a worktree** (`GIT_ROOT` is itself inside a `.claude/worktrees/` path): `PROJECT_ROOT` = CWD. Set `EXCLUDE_DIRS` to `[]`. Isolation is inherent.
+
+### CLAUDE.md Discovery
+
+Look for CLAUDE.md in `PROJECT_ROOT`. If not found and `PROJECT_ROOT != GIT_ROOT`, also check `GIT_ROOT` for a monorepo-level CLAUDE.md.
 
 ---
 
@@ -96,7 +119,9 @@ Each phase declares what it receives, produces, and guarantees. The orchestrator
 
 #### Code type
 
-Run checks **in parallel** (all independent). Stop if any blocking check fails:
+**First:** Compute workspace scoping (`GIT_ROOT`, `GIT_PREFIX`, `PROJECT_ROOT`, `EXCLUDE_DIRS`) per the Workspace Scoping section. Report the scoping decision (e.g., "Workspace scoped to python/services/agent-orchestration/ within /path/to/monorepo"). All subsequent phases use `PROJECT_ROOT` as the working scope.
+
+Then run checks **in parallel** (all independent). Stop if any blocking check fails:
 1. Git repository: `git rev-parse --is-inside-work-tree`
 2. Merge conflicts: `git diff --check HEAD`
 3. PR mode: verify `gh` CLI available
@@ -104,10 +129,10 @@ Run checks **in parallel** (all independent). Stop if any blocking check fails:
 5. Empty diff check
 6. Detached HEAD: warn and continue
 
-Read CLAUDE.md if it exists. Look for spec docs in `.claude/docs/[feature-name]/` (match by branch name or diff files).
+Read CLAUDE.md per the CLAUDE.md Discovery rules in Workspace Scoping. Look for spec docs in `.claude/docs/[feature-name]/` (match by branch name or diff files).
 
 Launch **in parallel**:
-- **Explore agent** (thorough mode only): find similar code patterns, error handling conventions, testing patterns, related impacted code
+- **Explore agent** (thorough mode only): find similar code patterns, error handling conventions, testing patterns, related impacted code. **Scope exploration to `PROJECT_ROOT`. Do not explore files outside this directory or in `EXCLUDE_DIRS`.**
 - **Pre-commit checks** (skip if `--skip-pre-commit`): detect project type, run applicable checks (30s timeout each)
 
 #### Plan/Spec type
@@ -135,14 +160,14 @@ Read `PLAN.md`, extract current version path, verify directory exists. Read all 
 
 #### Code type
 
-1. Get diff via appropriate git command based on scope
+1. Get diff via appropriate git command based on scope. **If `GIT_PREFIX` is non-empty**, add `--relative` to the git diff command to produce paths relative to `PROJECT_ROOT` and filter to only in-scope changes. For PR mode, determine the base branch (e.g., `gh pr view --json baseRefName -q .baseRefName`), ensure it is fetched locally (`git fetch origin <base-branch>`), then use `git diff <base-branch>...HEAD --relative` instead of `gh pr diff` (which does not support `--relative`).
 2. Show `git diff --stat` summary
 3. If diff > 3,000 lines, warn user
 4. Check dependency manifest changes
-5. Create round directory per [references/output-structure.md](${CLAUDE_SKILL_DIR}/references/output-structure.md)
+5. Create round directory under `PROJECT_ROOT` per [references/output-structure.md](${CLAUDE_SKILL_DIR}/references/output-structure.md) (i.e., `PROJECT_ROOT/.claude/reviews/<branch>/<timestamp>-<scope>/`)
 6. Save `_diff.patch`
 7. Write `_review-prompt.md` using [references/code-review-prompt.md](${CLAUDE_SKILL_DIR}/references/code-review-prompt.md)
-8. **Inject learnings:** Read [references/learning-injection.md](${CLAUDE_SKILL_DIR}/references/learning-injection.md). Scan `.claude/learnings/` for active learnings matching diff file paths. If matches found, append the `## Known Project Learnings` section to `_review-prompt.md` per the injection format. Cap at 10. Run the staleness check on all evaluated learnings.
+8. **Inject learnings:** Read [references/learning-injection.md](${CLAUDE_SKILL_DIR}/references/learning-injection.md). Scan `.claude/learnings/` for active learnings matching diff file paths. **Note:** Always use repo-root-relative file paths for learning scope matching (i.e., `git diff --name-only` without `--relative`, even when `GIT_PREFIX` is non-empty). The `--relative` flag only applies to the diff captured in step 1, not to the paths used for learning injection. If matches found, append the `## Known Project Learnings` section to `_review-prompt.md` per the injection format. Cap at 10. Run the staleness check on all evaluated learnings.
 
 **Quick mode:** Skip steps 5-8. Perform direct in-context analysis focusing on CRITICAL issues only. Skip all remaining phases.
 
@@ -166,13 +191,13 @@ Launch **all reviewers in parallel** (`run_in_background: true`) in a single mes
 
 #### Internal reviewers (always in thorough mode)
 
-Launch `<COUNT>` `Explore` agents (`model: "opus"`, `subagent_type: "Explore"`). Each receives the review prompt content, the target (diff or plan docs), codebase patterns from Phase 1, CLAUDE.md rules, and spec docs if available.
+Launch `<COUNT>` `Explore` agents (`model: "opus"`, `subagent_type: "Explore"`). Each receives the review prompt content, the target (diff or plan docs), codebase patterns from Phase 1, CLAUDE.md rules, and spec docs if available. **Include workspace scoping:** "Your workspace is scoped to {PROJECT_ROOT}. Only explore files within this directory." When `EXCLUDE_DIRS` is non-empty, append: "Do not explore these directories: {EXCLUDE_DIRS joined by comma}."
 
 **IMPORTANT:** `Explore` agents cannot write files. After each completes, the **orchestrator** captures its output and writes it to `review-<source>-<N>.md` in the round directory. Source is `claude-code` for code type, `opus-internal` for plan/spec type.
 
 #### External reviewers (with `--external` or when `agent` CLI available for plan/spec)
 
-Build a JSON configuration object with one task per (model, instance) combination. Each task specifies: `model`, `instance`, `type`, `project_root`, `review_prompt_path`, `output_path` (`<ROUND_DIR>/review-<MODEL>-<N>.md`), `input_path` (diff file or plan directory), and `input_type` (`diff` or `plan_dir`). Model names must match `[a-zA-Z0-9._-]+`. Each `(model, instance)` pair must be unique. At the top level of the JSON config (not per-task), include `timeout_seconds` (default 300), `retry_count` (default 1), `retry_delay_seconds` (default 10).
+Build a JSON configuration object with one task per (model, instance) combination. Each task specifies: `model`, `instance`, `type`, `project_root` (**set to `PROJECT_ROOT`**, not `GIT_ROOT`), `review_prompt_path`, `output_path` (`<ROUND_DIR>/review-<MODEL>-<N>.md`), `input_path` (diff file or plan directory), `input_type` (`diff` or `plan_dir`), and `exclude_dirs` (**set to `EXCLUDE_DIRS`**; omit or pass `[]` when empty). Model names must match `[a-zA-Z0-9._-]+`. Each `(model, instance)` pair must be unique. At the top level of the JSON config (not per-task), include `timeout_seconds` (default 300), `retry_count` (default 1), `retry_delay_seconds` (default 10).
 
 Run the reviewer script:
 
@@ -297,7 +322,7 @@ After all responses:
 
 #### Update REVIEW.md (both types)
 
-Create/update the REVIEW.md index file at the appropriate location (`.claude/reviews/REVIEW.md` for code, `<plan-root>/REVIEW.md` for plan/spec). Newest round first, linking to each round's summary.
+Create/update the REVIEW.md index file at the appropriate location (`PROJECT_ROOT/.claude/reviews/REVIEW.md` for code, `<plan-root>/REVIEW.md` for plan/spec). Newest round first, linking to each round's summary.
 
 ---
 

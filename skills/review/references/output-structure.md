@@ -8,8 +8,10 @@ Thorough mode always persists review artifacts. Quick mode only persists when `-
 
 ### Code type
 
+Review artifacts are written relative to `PROJECT_ROOT` (the directory where `/review` was invoked). When `PROJECT_ROOT == GIT_ROOT`, this is the repository root. When invoked from a subdirectory, artifacts live within that subdirectory so scoped external reviewers can access them.
+
 ```
-.claude/reviews/
+PROJECT_ROOT/.claude/reviews/
 ├── REVIEW.md                                         # → most recent review round (any branch)
 ├── feature--dark-mode/
 │   ├── 20260212-143022-staged/                       # Internal-only (default)
@@ -21,11 +23,11 @@ Thorough mode always persists review artifacts. Quick mode only persists when `-
 │   │   ├── _diff.patch
 │   │   ├── review-claude-code-1.md
 │   │   ├── review-claude-code-2.md
-│   │   ├── review-composer-1.5-1.md
-│   │   ├── review-composer-1.5-2.md
+│   │   ├── review-composer-2-fast-1.md
+│   │   ├── review-composer-2-fast-2.md
 │   │   ├── REVIEW_SUMMARY.md
-│   │   ├── rebuttal-composer-1.5-1-C1.md             # Deliberation (if triggered)
-│   │   └── rebuttal-response-composer-1.5-1-C1.md
+│   │   ├── rebuttal-composer-2-fast-1-C1.md             # Deliberation (if triggered)
+│   │   └── rebuttal-response-composer-2-fast-1-C1.md
 │   └── 20260212-160000-vs-master/
 │       └── ...
 └── pr-456/
@@ -45,7 +47,7 @@ Thorough mode always persists review artifacts. Quick mode only persists when `-
         ├── _review-prompt.md
         ├── review-opus-internal-1.md
         ├── review-opus-internal-2.md
-        ├── review-gemini-3.1-pro-1.md
+        ├── review-gemini-3-flash-1.md
         └── REVIEW_SUMMARY.md
 ```
 

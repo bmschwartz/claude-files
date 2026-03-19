@@ -47,6 +47,11 @@ def validate_config(config: dict) -> None:
             raise ValueError(f"Task {i} missing fields: {missing}")
         if task["type"] not in ("code", "plan", "spec"):
             raise ValueError(f"Task {i} has invalid type: {task['type']}")
+        if not Path(task["project_root"]).is_dir():
+            raise ValueError(
+                f"Task {i} has invalid project_root: {task['project_root']!r} "
+                "is not an existing directory"
+            )
         if task["input_type"] not in ("diff", "plan_dir"):
             raise ValueError(f"Task {i} has invalid input_type: {task['input_type']}")
         if not _SAFE_MODEL_RE.match(str(task["model"])):
@@ -58,6 +63,19 @@ def validate_config(config: dict) -> None:
         if pair in seen_pairs:
             raise ValueError(f"Task {i} has duplicate (model, instance): {pair}")
         seen_pairs.add(pair)
+        exclude_dirs = task.get("exclude_dirs", [])
+        if not isinstance(exclude_dirs, list) or not all(
+            isinstance(d, str) and d.strip() for d in exclude_dirs
+        ):
+            raise ValueError(
+                f"Task {i} has invalid exclude_dirs: must be a list of non-empty strings"
+            )
+        for d in exclude_dirs:
+            if ".." in d or d.startswith("/"):
+                raise ValueError(
+                    f"Task {i} has invalid exclude_dirs entry: {d!r} "
+                    "must be a relative path without '..'"
+                )
 
     timeout = config.get("timeout_seconds", 300)
     if not isinstance(timeout, (int, float)) or timeout <= 0:
@@ -66,8 +84,10 @@ def validate_config(config: dict) -> None:
 
 def build_preamble(task: dict) -> str:
     """Generate the type-specific context preamble for a reviewer."""
+    if task.get("prompt_kind") == "rebuttal":
+        return ""
     if task["input_type"] == "diff":
-        return (
+        preamble = (
             "You are reviewing code changes (diff) for a project.\n"
             f"The diff file is located at: {task['input_path']}\n"
             "The project codebase is in this workspace.\n"
@@ -75,12 +95,23 @@ def build_preamble(task: dict) -> str:
             "the context around the changes being reviewed.\n"
         )
     else:
-        return (
+        preamble = (
             f"The plan documents are located at: {task['input_path']}\n"
             "The project codebase is in this workspace.\n"
             "Read all plan documents first, then use the codebase "
             "to verify claims in the plan.\n"
         )
+
+    exclude_dirs = task.get("exclude_dirs", [])
+    if exclude_dirs:
+        dirs_str = ", ".join(f"`{d}`" for d in exclude_dirs)
+        preamble += (
+            f"\n**IMPORTANT: Do not explore or read files in these directories: "
+            f"{dirs_str}. They contain unrelated code from other branches and "
+            "will produce misleading context.**\n"
+        )
+
+    return preamble
 
 
 def write_combined_prompt(task: dict, output_dir: Path) -> Path:

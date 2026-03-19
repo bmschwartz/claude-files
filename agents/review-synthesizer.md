@@ -48,7 +48,7 @@ In this mode, read the prior Conflicts section to understand what was disputed, 
 
 5. For each distinct finding, determine **agreement level**:
 
-   - **Strong agreement** — Flagged by reviewers from at least 2 different models (e.g., opus-internal + gpt-5.4-high-fast)
+   - **Strong agreement** — Flagged by reviewers from at least 2 different models (e.g., opus-internal + gpt-5.4-medium-fast)
    - **Moderate agreement** — Flagged by multiple instances of the same model but no cross-model corroboration
    - **Single reviewer** — Only one reviewer raised the point
 

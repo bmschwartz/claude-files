@@ -64,7 +64,7 @@ For each rebuttal prompt:
 <ROUND_DIR>/rebuttal-response-<REVIEWER>-C<N>.md
 ```
 
-**External reviewers:** Build a single-task JSON config for `run_reviewers.py` with the rebuttal prompt file as `review_prompt_path` and the rebuttal-response path as `output_path`. Run via `python3 "${CLAUDE_SKILL_DIR}/scripts/run_reviewers.py"`. Parse the JSON result to confirm success.
+**External reviewers:** Build a single-task JSON config for `run_reviewers.py` with the rebuttal prompt file as `review_prompt_path` and the rebuttal-response path as `output_path`. Use `PROJECT_ROOT` (not `GIT_ROOT`) for `project_root` and include `exclude_dirs` from the original review config. Run via `python3 "${CLAUDE_SKILL_DIR}/scripts/run_reviewers.py"`. Parse the JSON result to confirm success.
 
 ### Step 4: Re-synthesis
 

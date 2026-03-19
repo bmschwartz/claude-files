@@ -7,6 +7,11 @@ Review the code changes (diff) in this workspace. The diff file is at: <DIFF_PAT
 
 Read the entire diff before beginning your analysis. Then use the project codebase to understand context around the changes.
 
+<If workspace is scoped (GIT_PREFIX is non-empty)>
+## Workspace Scope
+This review is scoped to a subdirectory of a larger repository. All diff paths are relative to this workspace root. Focus your analysis on the code within this workspace.
+</If>
+
 <If CLAUDE.md exists>
 ## Project Conventions (from CLAUDE.md)
 <CLAUDE.md content>
