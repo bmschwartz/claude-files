@@ -23,7 +23,17 @@
 
 **Backstop:** After 5 rounds with no new critical requirements, draft spec with stated assumptions.
 
-### 2. Architecture Design
+### 2. Design Interrogation (`/grill-me`)
+
+Stress-test the design before committing to architecture. Behavior depends on tier and flags:
+
+- **Critical tier:** Mandatory. Invoke `/grill-me` automatically.
+- **Standard tier:** Offer to the user: **"Run /grill-me to stress-test this design?"** Respect `--grill` / `--no-grill` flags if provided.
+- **Light tier:** Skip unless `--grill` flag was passed.
+
+Invoke `/grill-me` as a skill call — do not inline the behavior. The session ends when Claude summarizes all resolved decisions and the user confirms. The summary stays conversational (no artifact written) and feeds naturally into Architecture Design.
+
+### 3. Architecture Design
 
 1. **Derive feature slug** from description (lowercase, hyphens). Collision check: if `.claude/docs/[slug]/` exists, increment suffix (`-v2`, `-v3`, ..., cap at `-v9`).
 2. **Initialize state:** Create `.claude/docs/[slug]/`, write CHECKPOINT.md (Phase: Design, Status: active), write CLAUDE.md breadcrumb per [references/checkpoint.md](${CLAUDE_SKILL_DIR}/references/checkpoint.md).
@@ -32,7 +42,7 @@
 
 **Blueprint output:** Files to create/modify, component boundaries, data flow, build sequence, testing strategy, risk table.
 
-### 3. Generate SPEC.md
+### 4. Generate SPEC.md
 
 Create `.claude/docs/[slug]/plans/<YYYYMMDD-HHMMSS>/SPEC.md` using the template at [references/spec-template.md](${CLAUDE_SKILL_DIR}/references/spec-template.md).
 
@@ -51,7 +61,7 @@ Create `.claude/docs/[slug]/plans/<YYYYMMDD-HHMMSS>/SPEC.md` using the template 
 
 **Critical tier — Spec Adversary (mandatory):** Launch parallel `Explore` subagent that attempts to break the spec. Incorporate findings before continuing. This is required for Critical tier — do not skip.
 
-### 4. Generate Supporting Documents
+### 5. Generate Supporting Documents
 
 Generate **in parallel** from SPEC.md:
 - **Always:** CHECKLIST.md (with TDD test/implementation grouping), README.md
@@ -60,13 +70,13 @@ Generate **in parallel** from SPEC.md:
 
 Generate `PLAN.md` last (references other documents).
 
-### 5. Design Convergence Loop (optional)
+### 6. Design Convergence Loop (optional)
 
 **Standard/Critical tier:** Optionally run `/review --type spec --verdict-only` on the spec.
 
 If `verdict.decision != CONVERGED`: revise spec based on findings, re-review. Max 2 rounds. If still not converged, proceed to human gate with findings noted.
 
-### 6. Human Gate
+### 7. Human Gate
 
 If the design convergence loop ran and did not fully converge, present remaining findings alongside the spec so the developer has full context.
 

@@ -19,7 +19,21 @@ Orchestrates feature development: **Explore → Design → Implement → Verify 
 ```
 /feature $ARGUMENTS
 /feature --autonomy <guided|supervised|autonomous> $ARGUMENTS
+/feature --grill $ARGUMENTS
+/feature --no-grill $ARGUMENTS
 ```
+
+### Design Interrogation (`--grill`)
+
+After Requirements Gathering, `/grill-me` stress-tests the design before architecture begins. Tier defaults:
+
+| Tier | Default | Override |
+|------|---------|----------|
+| **Light** | Skipped | `--grill` to enable |
+| **Standard** | Offered (user chooses) | `--grill` / `--no-grill` |
+| **Critical** | Mandatory | `--no-grill` to skip |
+
+Independent of `--autonomy` — autonomy governs phase transitions and review loops, `--grill` governs design interrogation.
 
 ### Feature Tiers
 
@@ -145,6 +159,7 @@ Triggered when implementation reveals SPEC.md is wrong or incomplete. Can occur 
 |-------|-------------|---------|
 | Explore | `Explore` (×2, or ×1 Light) | Pattern + architecture discovery |
 | Explore | `feature-dev:code-explorer` (Standard/Critical) | Deep execution path tracing |
+| Design | `/grill-me` (conditional) | Design interrogation before architecture |
 | Design | `feature-dev:code-architect` or `Plan` (Light) | Architecture blueprint |
 | Design | `Explore` (Critical — mandatory) | Spec adversary (read-only) |
 | Design | `/review --type spec` (optional) | Multi-model spec review |
