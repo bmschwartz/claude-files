@@ -11,6 +11,6 @@
 ### Spec review 
 ```
 /grill-me Review the design specs at `docs/idea/INDEX.md` and focus on cross-spec contradictions, missing edge cases, and general assumptions that haven't been validated.
-/review --type spec `docs/idea/INDEX.md` [--external to include reviews from other models]
+/review --type spec `docs/idea/INDEX.md` [--external to include reviews from other models using the *CURSOR* `agent` CLI]
 /grill-me One final pass to review the specs at `docs/idea/INDEX.md`
 ```
