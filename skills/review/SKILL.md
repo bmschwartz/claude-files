@@ -68,7 +68,7 @@ A unified review skill that orchestrates parallel AI reviewers, synthesizes find
 | `--no-learn` | Skip learning extraction (Phase 4.7) entirely |
 | `--auto-learn` | Auto-accept learning candidates without human gate |
 
-**Default external models:** `composer-2-fast`, `gpt-5.4-medium-fast`, `gemini-3-flash`
+**Default external models:** `composer-2-fast`, `gpt-5.5-high`, `gemini-3-flash`
 
 ---
 
