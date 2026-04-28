@@ -162,7 +162,7 @@ async def run_single_reviewer(
         proc = await asyncio.create_subprocess_exec(
             "agent", "--print",
             "--model", task["model"],
-            "--mode", "plan",
+            "--mode", "ask",
             "--force",
             "--workspace", task["project_root"],
             stdin=fin,

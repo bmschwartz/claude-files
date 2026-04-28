@@ -17,8 +17,10 @@ This review is scoped to a subdirectory of a larger repository. All diff paths a
 <CLAUDE.md content>
 </If>
 
+<If --deep-explore was set and Phase 1 Explore produced output>
 ## Codebase Patterns (from automated analysis)
 <Phase 1 patterns discovered by Explore agent>
+</If>
 
 <If spec docs exist>
 ## Feature Specification Context

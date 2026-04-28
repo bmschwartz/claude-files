@@ -2,7 +2,7 @@
 name: review-synthesizer
 description: Synthesizes multiple AI-generated reviews into a structured summary with severity tagging, cross-model agreement analysis, conflict detection, and a machine-readable verdict block. Handles both code reviews (severity sections + agreement matrix) and plan/spec reviews (auto-apply/needs-input/unique insights). Used by the /review skill.
 tools: Read, Write, Glob, Grep
-model: opus
+model: sonnet
 permissionMode: acceptEdits
 maxTurns: 15
 ---

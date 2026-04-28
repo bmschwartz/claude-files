@@ -40,6 +40,7 @@ A unified review skill that orchestrates parallel AI reviewers, synthesizes find
 | `branch-name` | Review current vs specified branch |
 | `--pr <number>` | Review a GitHub PR |
 | `--changed-only` | Scope to files changed since last review round |
+| `--deep-explore` | Run a Phase 1 Explore pre-pass to discover codebase patterns and inject them into reviewer prompts. Off by default — reviewers already explore on their own; enable for unfamiliar codebases or very large diffs. |
 | `--focus <area>` | Focus synthesis on area (security, performance, tests) |
 | `--skip-fix` | Show review but skip interactive fix prompts |
 | `--skip-pre-commit` | Skip pre-commit checks |
@@ -132,7 +133,7 @@ Then run checks **in parallel** (all independent). Stop if any blocking check fa
 Read CLAUDE.md per the CLAUDE.md Discovery rules in Workspace Scoping. Look for spec docs in `.claude/docs/[feature-name]/` (match by branch name or diff files).
 
 Launch **in parallel**:
-- **Explore agent** (thorough mode only): find similar code patterns, error handling conventions, testing patterns, related impacted code. **Scope exploration to `PROJECT_ROOT`. Do not explore files outside this directory or in `EXCLUDE_DIRS`.**
+- **Explore agent** (thorough mode with `--deep-explore` only): find similar code patterns, error handling conventions, testing patterns, related impacted code. **Scope exploration to `PROJECT_ROOT`. Do not explore files outside this directory or in `EXCLUDE_DIRS`.** Skipped by default — Phase 3 reviewers are themselves `Explore` agents and perform diff-driven exploration without needing this pre-pass. Opt in via `--deep-explore` for unfamiliar codebases or very large diffs where shared priming amortizes across reviewers.
 - **Pre-commit checks** (skip if `--skip-pre-commit`): detect project type, run applicable checks (30s timeout each)
 
 #### Plan/Spec type
@@ -338,7 +339,7 @@ See [references/output-format.md](${CLAUDE_SKILL_DIR}/references/output-format.m
 
 | Agent | Purpose | When used | Model |
 |-------|---------|-----------|-------|
-| `Explore` | Codebase pattern discovery (Phase 1) | Thorough mode, code type | `opus` |
+| `Explore` | Codebase pattern discovery (Phase 1) | Thorough mode, code type, `--deep-explore` | `opus` |
 | `Explore` | Built-in reviewer (× count, read-only) | Thorough mode, all types | `opus` |
 
 ### Custom (from `agents/`)
