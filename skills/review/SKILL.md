@@ -28,11 +28,12 @@ A unified review skill that orchestrates parallel AI reviewers, synthesizes find
 
 | Flag | Effect |
 |------|--------|
-| _(no flags)_ | Review staged changes with internal Claude reviewers |
+| _(no flags)_ | Review staged changes with multi-model review enabled (`--external` on by default) |
 | `--quick` | Fast review, CRITICAL issues only, no subagents, no fix prompts, no persistence |
-| `--external` | Enable multi-model review via `agent` CLI |
+| `--external` | Enable multi-model review via `agent` CLI (**default: on**) |
+| `--no-external` | Disable multi-model review; use only internal Claude reviewers |
 | `--models <list>` | Override default external models (implies `--external`) |
-| `--count <N>` | Number of reviewer instances per model (default: 1) |
+| `--count <N>` | Number of reviewer instances per model (default: 2) |
 | `--unstaged` | Review unstaged changes |
 | `--all` | Review both staged and unstaged |
 | `file1 file2` | Review specific files |
@@ -68,7 +69,7 @@ A unified review skill that orchestrates parallel AI reviewers, synthesizes find
 | `--no-learn` | Skip learning extraction (Phase 4.7) entirely |
 | `--auto-learn` | Auto-accept learning candidates without human gate |
 
-**Default external models:** `composer-2-fast`, `gpt-5.5-high`, `gemini-3-flash`
+**Default external models:** `composer-2.5`, `gpt-5.4-high`, `gemini-3.5-flash`
 
 ---
 

@@ -23,11 +23,11 @@ PROJECT_ROOT/.claude/reviews/
 │   │   ├── _diff.patch
 │   │   ├── review-claude-code-1.md
 │   │   ├── review-claude-code-2.md
-│   │   ├── review-composer-2-fast-1.md
-│   │   ├── review-composer-2-fast-2.md
+│   │   ├── review-composer-2.5-1.md
+│   │   ├── review-composer-2.5-2.md
 │   │   ├── REVIEW_SUMMARY.md
-│   │   ├── rebuttal-composer-2-fast-1-C1.md             # Deliberation (if triggered)
-│   │   └── rebuttal-response-composer-2-fast-1-C1.md
+│   │   ├── rebuttal-composer-2.5-1-C1.md             # Deliberation (if triggered)
+│   │   └── rebuttal-response-composer-2.5-1-C1.md
 │   └── 20260212-160000-vs-master/
 │       └── ...
 └── pr-456/
@@ -47,7 +47,7 @@ PROJECT_ROOT/.claude/reviews/
         ├── _review-prompt.md
         ├── review-opus-internal-1.md
         ├── review-opus-internal-2.md
-        ├── review-gemini-3-flash-1.md
+        ├── review-gemini-3.5-flash-1.md
         └── REVIEW_SUMMARY.md
 ```
 
