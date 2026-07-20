@@ -83,9 +83,11 @@ Each thread's id is the **first 8 hex characters of its chatId** (e.g. chatId
 ## State — two stores
 
 - **Session marker** — `${TMPDIR:-/tmp}/consult-$CLAUDE_CODE_SESSION_ID/current-consult`,
-  **shell-sourceable** (`CHAT=…`, `MODEL=…`; add `TITLE=…` for the display label) so a continue
-  can `source` it directly. Keyed on the session id, so it's **absent at the start of every new
-  session**; its presence = the active thread. Written when you create or `--switch` to a thread.
+  **shell-sourceable** and holding only validated fields (`CHAT=<uuid>`, `MODEL=<id>`) so a
+  continue can `source` it safely. Keyed on the session id, so it's **absent at the start of every
+  new session**; its presence = the active thread. Written when you create or `--switch` to a
+  thread. Display titles live in the history index, never in this sourced file (never `source`
+  untrusted text).
 - **Durable index** (git repos only) — `<repo>/.claude/consult/history.jsonl`, one line per
   thread: `{chatId, title, description, model, created_at, last_used_at}`. Gitignore
   `.claude/consult/` on first use. Powers `--list` / `--switch` across sessions.
@@ -99,8 +101,9 @@ created.
   line per thread — `<hash>  <title> — <description>` — and mark the active thread with `→`.
   Changes nothing, sends nothing. Empty index → "No saved consult threads yet."
 - **`--switch <hash>`**: match `<hash>` as a prefix against the index; write that thread's
-  `{chatId, title, model}` to the session marker; print `switched → <hash>: <title>`. Send
-  nothing — the next `/consult <q>` continues it. No match → print the list and stop.
+  `CHAT=<chatId>` and `MODEL=<model>` to the session marker (title stays in the index, not the
+  sourced file); print `switched → <hash>: <title>`. Send nothing — the next `/consult <q>`
+  continues it. No match → print the list and stop.
 
 ## Commands (exact — the mechanical part agents can't guess)
 
@@ -112,6 +115,15 @@ REPO=$(git rev-parse --show-toplevel)   # if this fails, see "Outside a git repo
 MARKER_DIR="${TMPDIR:-/tmp}/consult-${CLAUDE_CODE_SESSION_ID:-shared}"; mkdir -p "$MARKER_DIR"
 MARKER="$MARKER_DIR/current-consult"
 
+# Parse --model (empty if absent), then VALIDATE it: model ids are [a-zA-Z0-9._-]+.
+# Rejecting anything else blocks shell-metacharacter injection (the marker is sourced
+# later) and catches typos. Parameter expansion, not word-splitting → zsh/bash/sh safe.
+MODEL_ARG=""
+case " $ARGUMENTS " in *" --model "*) rest="${ARGUMENTS#*--model }"; MODEL_ARG="${rest%% *}" ;; esac
+case "$MODEL_ARG" in *[!a-zA-Z0-9._-]*)
+  echo "consult: invalid --model '$MODEL_ARG' (allowed: letters, digits, . _ -)"; exit 1 ;;
+esac
+
 # Decide the path — FLAGS WIN over marker state:
 #   --list / --switch <hash>  → handled in "--list and --switch" (no send); never reach here.
 #   --new / --challenge       → force a NEW thread even if a marker already exists.
@@ -121,19 +133,24 @@ case " $ARGUMENTS " in
   *) [ -f "$MARKER" ] && MODE=continue || MODE=new ;;
 esac
 
+# A thread stays on its original model: --model on a continue is refused, not applied.
+if [ "$MODE" = continue ] && [ -n "$MODEL_ARG" ]; then
+  echo "consult: this thread stays on its original model; run --new --model $MODEL_ARG for another model's independent take."
+  exit 0
+fi
+
 if [ "$MODE" = new ]; then
-  # Parse the model (default unless --model was passed). Parameter expansion, not
-  # word-splitting, so it works under zsh, bash, and sh; MODEL is always a real id.
-  MODEL=gpt-5.6-sol-xhigh
-  case " $ARGUMENTS " in *" --model "*) rest="${ARGUMENTS#*--model }"; MODEL="${rest%% *}";; esac
+  MODEL="${MODEL_ARG:-gpt-5.6-sol-xhigh}"
   CHAT=$(cursor-agent create-chat)
   # write the six-part bundle (see Bundle recipe) to "$MARKER_DIR/bundle.md" first, then:
   cursor-agent -p --resume "$CHAT" --model "$MODEL" \
-    --mode ask --force --trust --workspace "$REPO" < "$MARKER_DIR/bundle.md"
-  printf 'CHAT=%s\nMODEL=%s\n' "$CHAT" "$MODEL" > "$MARKER"   # persist active thread (shell-sourceable)
+    --mode ask --force --trust --workspace "$REPO" < "$MARKER_DIR/bundle.md" || exit 1
+  # persist ONLY after a successful call; MODEL is validated and CHAT is a create-chat UUID,
+  # so the sourced marker cannot carry shell metacharacters:
+  printf 'CHAT=%s\nMODEL=%s\n' "$CHAT" "$MODEL" > "$MARKER"
   # also append one line to $REPO/.claude/consult/history.jsonl (see State)
 else
-  source "$MARKER"      # CONTINUE: sets CHAT and MODEL from the active thread; never switch model mid-thread
+  source "$MARKER"      # CONTINUE: CHAT and MODEL from the active thread (validated when written)
   cursor-agent -p --resume "$CHAT" --model "$MODEL" \
     --mode ask --force --trust --workspace "$REPO" "your follow-up question"
 fi
