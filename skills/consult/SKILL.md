@@ -106,10 +106,13 @@ created.
 ```bash
 REPO=$(git rev-parse --show-toplevel)   # if this fails, see "Outside a git repo"
 
-# NEW thread:
+# NEW thread — MODEL is the --model value if the user passed one, else the default.
+# (This is the only place --model takes effect; do not hard-code the default here.)
+MODEL="${ARG_MODEL:-gpt-5.6-sol-xhigh}"
 CHAT=$(cursor-agent create-chat)
-cursor-agent -p --resume "$CHAT" --model gpt-5.6-sol-xhigh \
+cursor-agent -p --resume "$CHAT" --model "$MODEL" \
   --mode ask --force --trust --workspace "$REPO" < bundle.md
+# then persist "$MODEL" in the marker + history so continues reuse it
 
 # CONTINUE (reuse the thread's stored model — never switch mid-thread):
 cursor-agent -p --resume "$CHAT" --model "$STORED_MODEL" \
