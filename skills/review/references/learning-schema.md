@@ -25,7 +25,7 @@ tags: [auth, validation, error-handling]  # searchable keywords
 source:
   review_round: ".claude/reviews/<branch>/<timestamp>/"
   agreement: strong | moderate        # agreement level of the original finding
-  reviewers: [claude-opus, gpt-5.4]   # models that flagged it
+  reviewers: [claude-code, gpt-5.6-sol-xhigh-fast]   # models that flagged it
   feature: "<feature-slug>"           # if extracted during /feature workflow
 occurrences: 1                        # incremented on recurrence detection
 first_seen: "YYYY-MM-DD"
