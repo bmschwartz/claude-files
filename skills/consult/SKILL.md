@@ -111,29 +111,32 @@ REPO=$(git rev-parse --show-toplevel)   # if this fails, see "Outside a git repo
 # stable within a session and absent in a fresh one. No ambient $SCRATCH is needed.
 MARKER_DIR="${TMPDIR:-/tmp}/consult-${CLAUDE_CODE_SESSION_ID:-shared}"; mkdir -p "$MARKER_DIR"
 MARKER="$MARKER_DIR/current-consult"
-# Branch: [ -f "$MARKER" ] → CONTINUE the active thread; otherwise → NEW thread.
 
-# --- NEW thread ---
-# Parse the model from the invocation, defaulting when --model was not passed.
-# $ARGUMENTS is the raw arg string after /consult. MODEL ends up a real model id
-# (the parsed value or the default) — never placeholder text, never a hard-code.
-# Uses parameter expansion, not word-splitting, so it works under zsh, bash, and sh.
-MODEL=gpt-5.6-sol-xhigh
-case " $ARGUMENTS " in *" --model "*) rest="${ARGUMENTS#*--model }"; MODEL="${rest%% *}";; esac
+# Decide the path — FLAGS WIN over marker state:
+#   --list / --switch <hash>  → handled in "--list and --switch" (no send); never reach here.
+#   --new / --challenge       → force a NEW thread even if a marker already exists.
+#   otherwise                 → CONTINUE the active thread if the marker exists, else NEW.
+case " $ARGUMENTS " in
+  *" --new "*|*" --challenge "*) MODE=new ;;
+  *) [ -f "$MARKER" ] && MODE=continue || MODE=new ;;
+esac
 
-CHAT=$(cursor-agent create-chat)
-# write the six-part bundle (see Bundle recipe) to "$MARKER_DIR/bundle.md" first, then:
-cursor-agent -p --resume "$CHAT" --model "$MODEL" \
-  --mode ask --force --trust --workspace "$REPO" < "$MARKER_DIR/bundle.md"
-
-# persist the active thread so continues reuse it (marker is shell-sourceable):
-printf 'CHAT=%s\nMODEL=%s\n' "$CHAT" "$MODEL" > "$MARKER"
-# also append one line to $REPO/.claude/consult/history.jsonl (chatId,title,description,model,timestamps — see State)
-
-# --- CONTINUE (follow-up on the active thread) ---
-source "$MARKER"        # sets CHAT and MODEL from the active thread; never switch model mid-thread
-cursor-agent -p --resume "$CHAT" --model "$MODEL" \
-  --mode ask --force --trust --workspace "$REPO" "your follow-up question"
+if [ "$MODE" = new ]; then
+  # Parse the model (default unless --model was passed). Parameter expansion, not
+  # word-splitting, so it works under zsh, bash, and sh; MODEL is always a real id.
+  MODEL=gpt-5.6-sol-xhigh
+  case " $ARGUMENTS " in *" --model "*) rest="${ARGUMENTS#*--model }"; MODEL="${rest%% *}";; esac
+  CHAT=$(cursor-agent create-chat)
+  # write the six-part bundle (see Bundle recipe) to "$MARKER_DIR/bundle.md" first, then:
+  cursor-agent -p --resume "$CHAT" --model "$MODEL" \
+    --mode ask --force --trust --workspace "$REPO" < "$MARKER_DIR/bundle.md"
+  printf 'CHAT=%s\nMODEL=%s\n' "$CHAT" "$MODEL" > "$MARKER"   # persist active thread (shell-sourceable)
+  # also append one line to $REPO/.claude/consult/history.jsonl (see State)
+else
+  source "$MARKER"      # CONTINUE: sets CHAT and MODEL from the active thread; never switch model mid-thread
+  cursor-agent -p --resume "$CHAT" --model "$MODEL" \
+    --mode ask --force --trust --workspace "$REPO" "your follow-up question"
+fi
 ```
 
 > **Bash timeout: pass `timeout: 600000`.** The default model `gpt-5.6-sol-xhigh` runs 420–540s;
