@@ -82,10 +82,10 @@ Each thread's id is the **first 8 hex characters of its chatId** (e.g. chatId
 
 ## State — two stores
 
-- **Session marker** — `$SCRATCH/current-consult` in your per-session scratchpad dir,
+- **Session marker** — `${TMPDIR:-/tmp}/consult-$CLAUDE_CODE_SESSION_ID/current-consult`,
   **shell-sourceable** (`CHAT=…`, `MODEL=…`; add `TITLE=…` for the display label) so a continue
-  can `source` it directly. **Absent at the start of every new session**; its presence = the
-  active thread. Written when you create or `--switch` to a thread.
+  can `source` it directly. Keyed on the session id, so it's **absent at the start of every new
+  session**; its presence = the active thread. Written when you create or `--switch` to a thread.
 - **Durable index** (git repos only) — `<repo>/.claude/consult/history.jsonl`, one line per
   thread: `{chatId, title, description, model, created_at, last_used_at}`. Gitignore
   `.claude/consult/` on first use. Powers `--list` / `--switch` across sessions.
@@ -106,19 +106,25 @@ created.
 
 ```bash
 REPO=$(git rev-parse --show-toplevel)   # if this fails, see "Outside a git repo"
-MARKER="$SCRATCH/current-consult"       # $SCRATCH = your session scratchpad dir; marker is shell-sourceable
+
+# Per-session marker (shell-sourceable), keyed on the Claude Code session id so it is
+# stable within a session and absent in a fresh one. No ambient $SCRATCH is needed.
+MARKER_DIR="${TMPDIR:-/tmp}/consult-${CLAUDE_CODE_SESSION_ID:-shared}"; mkdir -p "$MARKER_DIR"
+MARKER="$MARKER_DIR/current-consult"
+# Branch: [ -f "$MARKER" ] → CONTINUE the active thread; otherwise → NEW thread.
 
 # --- NEW thread ---
 # Parse the model from the invocation, defaulting when --model was not passed.
 # $ARGUMENTS is the raw arg string after /consult. MODEL ends up a real model id
-# (the parsed value or the default) — it is never placeholder text and never a hard-code.
+# (the parsed value or the default) — never placeholder text, never a hard-code.
+# Uses parameter expansion, not word-splitting, so it works under zsh, bash, and sh.
 MODEL=gpt-5.6-sol-xhigh
-set -- $ARGUMENTS
-while [ $# -gt 0 ]; do [ "$1" = "--model" ] && { MODEL="$2"; break; }; shift; done
+case " $ARGUMENTS " in *" --model "*) rest="${ARGUMENTS#*--model }"; MODEL="${rest%% *}";; esac
 
 CHAT=$(cursor-agent create-chat)
+# write the six-part bundle (see Bundle recipe) to "$MARKER_DIR/bundle.md" first, then:
 cursor-agent -p --resume "$CHAT" --model "$MODEL" \
-  --mode ask --force --trust --workspace "$REPO" < bundle.md
+  --mode ask --force --trust --workspace "$REPO" < "$MARKER_DIR/bundle.md"
 
 # persist the active thread so continues reuse it (marker is shell-sourceable):
 printf 'CHAT=%s\nMODEL=%s\n' "$CHAT" "$MODEL" > "$MARKER"
