@@ -82,12 +82,11 @@ Each thread's id is the **first 8 hex characters of its chatId** (e.g. chatId
 
 ## State — two stores
 
-- **Session marker** — `${TMPDIR:-/tmp}/consult-$CLAUDE_CODE_SESSION_ID/current-consult`,
-  **shell-sourceable** and holding only validated fields (`CHAT=<uuid>`, `MODEL=<id>`) so a
-  continue can `source` it safely. Keyed on the session id, so it's **absent at the start of every
-  new session**; its presence = the active thread. Written when you create or `--switch` to a
-  thread. Display titles live in the history index, never in this sourced file (never `source`
-  untrusted text).
+- **Session marker** — `${TMPDIR:-/tmp}/consult-$CLAUDE_CODE_SESSION_ID/current-consult`, a simple
+  `CHAT=<uuid>` / `MODEL=<id>` file **read line-by-line, never `source`d**, and re-validated on
+  read so a tampered or legacy marker can't inject. Requires `CLAUDE_CODE_SESSION_ID` (no shared
+  fallback), so it's **absent at the start of every new session**; its presence = the active
+  thread. Written on create or `--switch`. Display titles live in the history index, never here.
 - **Durable index** (git repos only) — `<repo>/.claude/consult/history.jsonl`, one line per
   thread: `{chatId, title, description, model, created_at, last_used_at}`. Gitignore
   `.claude/consult/` on first use. Powers `--list` / `--switch` across sessions.
@@ -100,20 +99,23 @@ created.
 - **`--list`** (repo only): read `history.jsonl`, sort by `last_used_at` newest-first, print one
   line per thread — `<hash>  <title> — <description>` — and mark the active thread with `→`.
   Changes nothing, sends nothing. Empty index → "No saved consult threads yet."
-- **`--switch <hash>`**: match `<hash>` as a prefix against the index; write that thread's
-  `CHAT=<chatId>` and `MODEL=<model>` to the session marker (title stays in the index, not the
-  sourced file); print `switched → <hash>: <title>`. Send nothing — the next `/consult <q>`
-  continues it. No match → print the list and stop.
+- **`--switch <hash>`**: match `<hash>` as a prefix against the index; **validate** that entry's
+  model against `[a-zA-Z0-9._-]+` (skip with a warning if a legacy/tampered entry fails) and write
+  its `CHAT=<chatId>` / `MODEL=<model>` to the session marker (title stays in the index); print
+  `switched → <hash>: <title>`. Send nothing — the next `/consult <q>` continues it. No match →
+  print the list and stop. (The continue path re-validates on read regardless.)
 
 ## Commands (exact — the mechanical part agents can't guess)
 
 ```bash
 REPO=$(git rev-parse --show-toplevel)   # if this fails, see "Outside a git repo"
 
-# Per-session marker (shell-sourceable), keyed on the Claude Code session id so it is
-# stable within a session and absent in a fresh one. No ambient $SCRATCH is needed.
-MARKER_DIR="${TMPDIR:-/tmp}/consult-${CLAUDE_CODE_SESSION_ID:-shared}"; mkdir -p "$MARKER_DIR"
-MARKER="$MARKER_DIR/current-consult"
+# Per-session marker, keyed on the Claude Code session id (stable within a session, absent in a
+# fresh one). Require a real session id — no shared fallback, which would let a later session see a
+# stale marker and continue an unrelated thread.
+: "${CLAUDE_CODE_SESSION_ID:?consult: CLAUDE_CODE_SESSION_ID not set - cannot track per-session threads}"
+MARKER_DIR="${TMPDIR:-/tmp}/consult-$CLAUDE_CODE_SESSION_ID"; mkdir -p "$MARKER_DIR"
+MARKER="$MARKER_DIR/current-consult"   # a KEY=value file, read line-by-line (never sourced)
 
 # Parse --model (empty if absent), then VALIDATE it: model ids are [a-zA-Z0-9._-]+.
 # Rejecting anything else blocks shell-metacharacter injection (the marker is sourced
@@ -150,7 +152,12 @@ if [ "$MODE" = new ]; then
   printf 'CHAT=%s\nMODEL=%s\n' "$CHAT" "$MODEL" > "$MARKER"
   # also append one line to $REPO/.claude/consult/history.jsonl (see State)
 else
-  source "$MARKER"      # CONTINUE: CHAT and MODEL from the active thread (validated when written)
+  # CONTINUE: read the marker WITHOUT executing it (never `source` — a metacharacter in a value
+  # would run), then re-validate before use so a tampered or legacy marker cannot inject.
+  CHAT=""; MODEL=""
+  while IFS='=' read -r k v; do case "$k" in CHAT) CHAT="$v" ;; MODEL) MODEL="$v" ;; esac; done < "$MARKER"
+  case "$MODEL" in ""|*[!a-zA-Z0-9._-]*) echo "consult: marker has an invalid model; run --new"; exit 1 ;; esac
+  case "$CHAT"  in ""|*[!a-zA-Z0-9.-]*)  echo "consult: marker has an invalid chat id; run --new"; exit 1 ;; esac
   cursor-agent -p --resume "$CHAT" --model "$MODEL" \
     --mode ask --force --trust --workspace "$REPO" "your follow-up question"
 fi
