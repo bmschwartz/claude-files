@@ -109,16 +109,21 @@ REPO=$(git rev-parse --show-toplevel)   # if this fails, see "Outside a git repo
 # NEW thread:
 CHAT=$(cursor-agent create-chat)
 cursor-agent -p --resume "$CHAT" --model gpt-5.6-sol-xhigh \
-  --mode ask --force --workspace "$REPO" < bundle.md
+  --mode ask --force --trust --workspace "$REPO" < bundle.md
 
 # CONTINUE (reuse the thread's stored model — never switch mid-thread):
 cursor-agent -p --resume "$CHAT" --model "$STORED_MODEL" \
-  --mode ask --force --workspace "$REPO" "your follow-up question"
+  --mode ask --force --trust --workspace "$REPO" "your follow-up question"
 ```
 
 > **Bash timeout: pass `timeout: 600000`.** The default model `gpt-5.6-sol-xhigh` runs 420–540s;
 > Bash's 120s default will kill it mid-answer. (For a faster turnaround use
 > `--model gpt-5.6-sol-xhigh-fast`, ~190–380s.)
+
+> **Keep `--trust` (headless-only).** It trusts the workspace without prompting; `--force` only
+> auto-approves commands. Without `--trust`, a first-use consult in a repo Cursor hasn't trusted
+> yet can block on an interactive trust prompt and never return — defeating the non-interactive
+> path. `--mode ask` keeps it read-only regardless.
 
 ## Outside a git repo
 
