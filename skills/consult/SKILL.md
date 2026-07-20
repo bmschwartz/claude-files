@@ -106,16 +106,23 @@ created.
 ```bash
 REPO=$(git rev-parse --show-toplevel)   # if this fails, see "Outside a git repo"
 
-# NEW thread — MODEL is the --model value if the user passed one, else the default.
-# (This is the only place --model takes effect; do not hard-code the default here.)
-MODEL="${ARG_MODEL:-gpt-5.6-sol-xhigh}"
+# --- NEW thread ---
+# Set MODEL from the parsed invocation: the value the user gave after --model, or
+# gpt-5.6-sol-xhigh when --model was absent. This is the ONLY place --model takes
+# effect — assign it here; never hard-code the default. Fill the placeholder below
+# from the flag you parsed (there is no ambient ARG_MODEL variable):
+MODEL="<the --model value, or gpt-5.6-sol-xhigh if --model was not passed>"
 CHAT=$(cursor-agent create-chat)
 cursor-agent -p --resume "$CHAT" --model "$MODEL" \
   --mode ask --force --trust --workspace "$REPO" < bundle.md
-# then persist "$MODEL" in the marker + history so continues reuse it
+# then persist {chatId: $CHAT, title, description, model: $MODEL} to the marker + history
 
-# CONTINUE (reuse the thread's stored model — never switch mid-thread):
-cursor-agent -p --resume "$CHAT" --model "$STORED_MODEL" \
+# --- CONTINUE (follow-up on the active thread) ---
+# CHAT and MODEL come from the session marker (the active thread). Reuse the thread's
+# model — never switch mid-thread. Fill both placeholders by reading the marker JSON:
+CHAT="<chatId from the session marker>"
+MODEL="<model from the session marker>"
+cursor-agent -p --resume "$CHAT" --model "$MODEL" \
   --mode ask --force --trust --workspace "$REPO" "your follow-up question"
 ```
 
