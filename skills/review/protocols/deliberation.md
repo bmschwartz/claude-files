@@ -95,10 +95,10 @@ Confirm the updated `REVIEW_SUMMARY.md`:
 ├── _review-prompt.md
 ├── _diff.patch (code) or plan docs referenced
 ├── review-claude-code-1.md
-├── review-opus-4.6-1.md
-├── review-gpt-5.4-1.md
+├── review-composer-2.5-1.md
+├── review-gpt-5.6-sol-xhigh-fast-1.md
 ├── REVIEW_SUMMARY.md              # Updated with Deliberation Outcomes + new verdict
-├── rebuttal-opus-4.6-1-C1.md      # Rebuttal prompt sent to reviewer
-├── rebuttal-response-opus-4.6-1-C1.md  # Reviewer's response
+├── rebuttal-gpt-5.6-sol-xhigh-fast-1-C1.md      # Rebuttal prompt sent to reviewer
+├── rebuttal-response-gpt-5.6-sol-xhigh-fast-1-C1.md  # Reviewer's response
 └── ...
 ```

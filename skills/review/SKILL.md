@@ -69,7 +69,9 @@ A unified review skill that orchestrates parallel AI reviewers, synthesizes find
 | `--no-learn` | Skip learning extraction (Phase 4.7) entirely |
 | `--auto-learn` | Auto-accept learning candidates without human gate |
 
-**Default external models:** `composer-2.5`, `gpt-5.4-high`, `gemini-3.5-flash`
+**Default external models:** `composer-2.5`, `gpt-5.6-sol-xhigh-fast`, `gemini-3.5-flash`
+
+> Use the `-fast` serving variants for gpt-5.6-sol reviewers: the non-fast `gpt-5.6-sol-xhigh` and `gpt-5.6-sol-high` both time out in the `agent` CLI on typical review diffs (observed 2026-07-13: 420s and 540s timeouts across two attempts each), while `-fast` completes in 190-380s.
 
 ---
 
@@ -193,13 +195,13 @@ Launch **all reviewers in parallel** (`run_in_background: true`) in a single mes
 
 #### Internal reviewers (always in thorough mode)
 
-Launch `<COUNT>` `Explore` agents (`model: "opus"`, `subagent_type: "Explore"`). Each receives the review prompt content, the target (diff or plan docs), codebase patterns from Phase 1, CLAUDE.md rules, and spec docs if available. **Include workspace scoping:** "Your workspace is scoped to {PROJECT_ROOT}. Only explore files within this directory." When `EXCLUDE_DIRS` is non-empty, append: "Do not explore these directories: {EXCLUDE_DIRS joined by comma}."
+Launch `<COUNT>` `Explore` agents (`model: "opus"`, `subagent_type: "Explore"`). The `opus` alias resolves to the latest Opus (currently Opus 4.8); subagents inherit the session's reasoning effort, so internal reviewers run at `xhigh` under Claude Code defaults — do not lower session effort for review runs. Each receives the review prompt content, the target (diff or plan docs), codebase patterns from Phase 1, CLAUDE.md rules, and spec docs if available. **Include workspace scoping:** "Your workspace is scoped to {PROJECT_ROOT}. Only explore files within this directory." When `EXCLUDE_DIRS` is non-empty, append: "Do not explore these directories: {EXCLUDE_DIRS joined by comma}."
 
 **IMPORTANT:** `Explore` agents cannot write files. After each completes, the **orchestrator** captures its output and writes it to `review-<source>-<N>.md` in the round directory. Source is `claude-code` for code type, `opus-internal` for plan/spec type.
 
 #### External reviewers (with `--external` or when `agent` CLI available for plan/spec)
 
-Build a JSON configuration object with one task per (model, instance) combination. Each task specifies: `model`, `instance`, `type`, `project_root` (**set to `PROJECT_ROOT`**, not `GIT_ROOT`), `review_prompt_path`, `output_path` (`<ROUND_DIR>/review-<MODEL>-<N>.md`), `input_path` (diff file or plan directory), `input_type` (`diff` or `plan_dir`), and `exclude_dirs` (**set to `EXCLUDE_DIRS`**; omit or pass `[]` when empty). Model names must match `[a-zA-Z0-9._-]+`. Each `(model, instance)` pair must be unique. At the top level of the JSON config (not per-task), include `timeout_seconds` (default 300), `retry_count` (default 1), `retry_delay_seconds` (default 10).
+Build a JSON configuration object with one task per (model, instance) combination. Each task specifies: `model`, `instance`, `type`, `project_root` (**set to `PROJECT_ROOT`**, not `GIT_ROOT`), `review_prompt_path`, `output_path` (`<ROUND_DIR>/review-<MODEL>-<N>.md`), `input_path` (diff file or plan directory), `input_type` (`diff` or `plan_dir`), and `exclude_dirs` (**set to `EXCLUDE_DIRS`**; omit or pass `[]` when empty). Model names must match `[a-zA-Z0-9._-]+`. Each `(model, instance)` pair must be unique. At the top level of the JSON config (not per-task), include `timeout_seconds` (default 600 — gpt-5.6-sol `-fast` reviewers have been observed taking up to ~380s on a ~2,700-line diff), `retry_count` (default 1), `retry_delay_seconds` (default 10).
 
 Run the reviewer script:
 
@@ -342,6 +344,8 @@ See [references/output-format.md](${CLAUDE_SKILL_DIR}/references/output-format.m
 |-------|---------|-----------|-------|
 | `Explore` | Codebase pattern discovery (Phase 1) | Thorough mode, code type, `--deep-explore` | `opus` |
 | `Explore` | Built-in reviewer (× count, read-only) | Thorough mode, all types | `opus` |
+
+> `opus` resolves to the latest Opus (currently Opus 4.8). Subagents inherit the session's reasoning effort — `xhigh` by default in Claude Code — so internal reviewers effectively run as Opus 4.8 @ xhigh.
 
 ### Custom (from `agents/`)
 
