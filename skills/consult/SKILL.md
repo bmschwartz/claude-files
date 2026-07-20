@@ -82,9 +82,10 @@ Each thread's id is the **first 8 hex characters of its chatId** (e.g. chatId
 
 ## State — two stores
 
-- **Session marker** — `<session-scratchpad>/current-consult.json` = `{chatId, title, model}`.
-  In your per-session scratchpad dir, so it's **absent at the start of every new session**. Its
-  presence = the active thread. Set when you create or `--switch` to a thread.
+- **Session marker** — `$SCRATCH/current-consult` in your per-session scratchpad dir,
+  **shell-sourceable** (`CHAT=…`, `MODEL=…`; add `TITLE=…` for the display label) so a continue
+  can `source` it directly. **Absent at the start of every new session**; its presence = the
+  active thread. Written when you create or `--switch` to a thread.
 - **Durable index** (git repos only) — `<repo>/.claude/consult/history.jsonl`, one line per
   thread: `{chatId, title, description, model, created_at, last_used_at}`. Gitignore
   `.claude/consult/` on first use. Powers `--list` / `--switch` across sessions.
@@ -105,23 +106,26 @@ created.
 
 ```bash
 REPO=$(git rev-parse --show-toplevel)   # if this fails, see "Outside a git repo"
+MARKER="$SCRATCH/current-consult"       # $SCRATCH = your session scratchpad dir; marker is shell-sourceable
 
 # --- NEW thread ---
-# Set MODEL from the parsed invocation: the value the user gave after --model, or
-# gpt-5.6-sol-xhigh when --model was absent. This is the ONLY place --model takes
-# effect — assign it here; never hard-code the default. Fill the placeholder below
-# from the flag you parsed (there is no ambient ARG_MODEL variable):
-MODEL="<the --model value, or gpt-5.6-sol-xhigh if --model was not passed>"
+# Parse the model from the invocation, defaulting when --model was not passed.
+# $ARGUMENTS is the raw arg string after /consult. MODEL ends up a real model id
+# (the parsed value or the default) — it is never placeholder text and never a hard-code.
+MODEL=gpt-5.6-sol-xhigh
+set -- $ARGUMENTS
+while [ $# -gt 0 ]; do [ "$1" = "--model" ] && { MODEL="$2"; break; }; shift; done
+
 CHAT=$(cursor-agent create-chat)
 cursor-agent -p --resume "$CHAT" --model "$MODEL" \
   --mode ask --force --trust --workspace "$REPO" < bundle.md
-# then persist {chatId: $CHAT, title, description, model: $MODEL} to the marker + history
+
+# persist the active thread so continues reuse it (marker is shell-sourceable):
+printf 'CHAT=%s\nMODEL=%s\n' "$CHAT" "$MODEL" > "$MARKER"
+# also append one line to $REPO/.claude/consult/history.jsonl (chatId,title,description,model,timestamps — see State)
 
 # --- CONTINUE (follow-up on the active thread) ---
-# CHAT and MODEL come from the session marker (the active thread). Reuse the thread's
-# model — never switch mid-thread. Fill both placeholders by reading the marker JSON:
-CHAT="<chatId from the session marker>"
-MODEL="<model from the session marker>"
+source "$MARKER"        # sets CHAT and MODEL from the active thread; never switch model mid-thread
 cursor-agent -p --resume "$CHAT" --model "$MODEL" \
   --mode ask --force --trust --workspace "$REPO" "your follow-up question"
 ```
