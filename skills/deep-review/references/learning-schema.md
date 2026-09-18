@@ -25,7 +25,7 @@ tags: [auth, validation, error-handling]  # searchable keywords
 source:
   review_round: ".claude/reviews/<branch>/<timestamp>/"
   agreement: strong | moderate        # agreement level of the original finding
-  reviewers: [claude-code, gpt-5.6-sol-xhigh-fast]   # models that flagged it
+  reviewers: [claude-code, gpt-5.6-terra-high]   # models that flagged it
   feature: "<feature-slug>"           # if extracted during /feature workflow
 occurrences: 1                        # incremented on recurrence detection
 first_seen: "YYYY-MM-DD"
@@ -95,7 +95,7 @@ What to do about it — specific actions, patterns to follow, or checks to perfo
 ```markdown
 # Review Learnings
 
-> Auto-generated index. Do not edit manually — updated by `/review` Phase 4.7.
+> Auto-generated index. Do not edit manually — updated by `/deep-review` Phase 4.7.
 
 | ID | Title | Category | Severity | Status | Occurrences | Last Seen |
 |----|-------|----------|----------|--------|-------------|-----------|

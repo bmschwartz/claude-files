@@ -1,7 +1,7 @@
 ---
 name: review-synthesizer
-description: Synthesizes multiple AI-generated reviews into a structured summary with severity tagging, cross-model agreement analysis, conflict detection, and a machine-readable verdict block. Handles both code reviews (severity sections + agreement matrix) and plan/spec reviews (auto-apply/needs-input/unique insights). Used by the /review skill.
-tools: Read, Write, Glob, Grep
+description: Synthesizes multiple AI-generated reviews into a structured summary with severity tagging, cross-model agreement analysis, conflict detection, and a machine-readable verdict block. Handles both code reviews (severity sections + agreement matrix) and plan/spec reviews (auto-apply/needs-input/unique insights). Used by the /deep-review skill.
+tools: Read, Write, Edit, Glob, Grep
 model: sonnet
 permissionMode: acceptEdits
 maxTurns: 15
@@ -32,7 +32,9 @@ In re-synthesis mode, you will additionally receive (in the invocation message):
 - A list of **rebuttal file paths** (`rebuttal-response-<REVIEWER>-C<N>.md`)
 - The **prior `REVIEW_SUMMARY.md`** path (containing the `## Conflicts` section from the initial synthesis)
 
-In this mode, read the prior Conflicts section to understand what was disputed, read each rebuttal response file to see the reviewer's targeted response, then resolve each conflict. Update affected findings (adjust severity, change fix suggestion, update agreement level as needed). Replace the `## Conflicts` section with a `## Deliberation Outcomes` section documenting each resolution. Re-number issues if any were merged or removed. Regenerate the verdict block.
+In this mode, read the prior Conflicts section to understand what was disputed, read each rebuttal response file to see the reviewer's targeted response, then resolve each conflict. Rebuttal responses may come from the original reviewer (`rebuttal-response-<REVIEWER>-C<N>.md`) or from the orchestrator checking the code directly (`rebuttal-response-orchestrator-C<N>.md`); weigh both by the evidence they cite.
+
+**Edit `REVIEW_SUMMARY.md` in place with `Edit` — do not re-read the raw reviews and do not rewrite the whole file.** Touch only: the affected findings (severity, fix suggestion, agreement), the `**Total issues:**` header line, the `## Conflicts` section (replace it with `## Deliberation Outcomes` documenting each resolution), and the verdict block. If a finding is removed or merged, mark it `~~struck~~` with a one-line reason instead of re-numbering, so downstream references stay valid.
 
 ---
 
@@ -66,7 +68,7 @@ In this mode, read the prior Conflicts section to understand what was disputed, 
 
    When reviewers disagree on severity for the same finding, use the higher severity.
 
-7. **Conflict detection (initial mode only).** After categorizing all findings, scan for genuine **conflicts** — cases where two or more reviewers reach opposing conclusions. A conflict exists when:
+7. **Conflict detection (initial mode only).** Only findings whose final severity is CRITICAL or IMPORTANT can become conflicts. For MINOR and POTENTIAL findings where reviewers disagree, keep the finding and add a one-line `- **Disputed:** <reviewer> considers this correct because <reason>` bullet; do not list it under Conflicts or count it in the verdict. After categorizing all findings, scan for genuine **conflicts** — cases where two or more reviewers reach opposing conclusions. A conflict exists when:
 
    - Two or more reviewers reference the same location AND reach **opposing conclusions** (one says the code/plan is correct, the other says it must change)
    - OR two or more reviewers propose **mutually exclusive fixes/changes** for the same finding (structurally incompatible approaches, not just different wording)
@@ -76,7 +78,32 @@ In this mode, read the prior Conflicts section to understand what was disputed, 
    - One reviewer finding something the other missed (different coverage)
    - Different wording for the same fix/change
 
-   For each conflict found, record: the location, Side A (reviewer + position + rationale), Side B (reviewer + position + rationale), which reviewer to re-engage (the one with weaker rationale or less evidence), and a specific question to resolve the disagreement.
+   For each conflict found, record: the location, Side A (reviewer + position + rationale), Side B (reviewer + position + rationale), which reviewer to re-engage (the one with weaker rationale or less evidence), a specific question to resolve the disagreement, and whether the question is **code-checkable** — a factual question answerable by reading at most ~3 files or running one search (e.g. "is `x` ever `None` at this call site?"), as opposed to a judgment call.
+
+   Then write one rebuttal prompt per conflict to `<ROUND_DIR>/rebuttal-<REVIEWER>-C<N>.md`, where `<REVIEWER>` is the re-engaged reviewer's file label (e.g. `claude-code-1`, `gemini-3.7-flash-high-2`):
+
+   ```markdown
+   # Rebuttal Request
+
+   ## Context
+   Another reviewer disagrees with your finding. Please respond to the specific question below.
+
+   ## Your Original Position
+   <the re-engaged reviewer's exact finding and rationale>
+
+   ## Opposing Position
+   <the other side's finding and rationale>
+
+   ## Question
+   <the specific question>
+
+   ## Instructions
+   - Respond to this specific question ONLY
+   - Do NOT perform a full re-review
+   - Reference specific code/plan evidence to support your response
+   - If you concede the point, say so clearly
+   - If you maintain your position, explain what the opposing reviewer missed
+   ```
 
 8. Generate the **verdict block** (see Verdict Block section below).
 
@@ -86,7 +113,7 @@ In this mode, read the prior Conflicts section to understand what was disputed, 
     - Path to `REVIEW_SUMMARY.md`
     - Count of findings by severity
     - Count of findings with strong/moderate/single agreement
-    - Number of conflicts detected (if any)
+    - Number of conflicts detected (if any), and for each: `C<N>`, the rebuttal file path, the re-engaged reviewer, and `code-checkable: yes|no`
     - Number of previously-addressed items filtered (plan/spec type)
     - Number of findings filtered by focus (code type, if applicable)
     - Whether synthesis completed successfully
@@ -142,7 +169,11 @@ _(Omit empty severity sections entirely)_
 ## MINOR
 
 ### N. <Issue Title>
-...
+
+- **Location:** `path/to/file.ts:12`
+- **Agreement:** Single (composer-2.5-1 only)
+- **Why:** <one or two sentences>
+- **Details:** `review-composer-2.5-1.md` (current code and suggested fix)
 
 ---
 
@@ -169,6 +200,8 @@ _(Only present if a focus filter was applied. Lists issues outside the focus are
 
 ## Agreement Matrix
 
+_(CRITICAL and IMPORTANT findings only.)_
+
 | Issue | claude-code-1 | opus-4.6-1 | gpt-5.4-1 | gpt-5.4-2 |
 |-------|:---:|:---:|:---:|:---:|
 | 1. SQL injection | ✓ | ✓ | ✓ | — |
@@ -191,14 +224,16 @@ _(Only present if conflicts were detected in initial mode. Omit entirely if no c
 
 Issue numbering is sequential across all severity sections (CRITICAL 1-3, IMPORTANT 4-7, etc.) to enable unambiguous references.
 
-For `code` type, extract or construct **structured fix information** for each issue:
+For `code` type, extract or construct **structured fix information** for each CRITICAL and IMPORTANT issue:
 - File path and line number
 - Current code snippet (from the diff)
 - Suggested fix (concrete code; if reviewers propose different fixes, use the most common and note alternatives)
 - Explanation of why + why the fix is recommended
 - Agreement details
 
-Issues in the POTENTIAL bucket may omit Current Code / Suggested Fix if no reviewer provided concrete code.
+Keep **Current Code** and **Suggested Fix** snippets to the lines that matter (about 15 lines each at most); use `...` for elided context.
+
+**MINOR and POTENTIAL issues use the compact format** shown above: location, agreement, a one- or two-sentence why, and a `Details:` pointer to the review file(s) that contain the current code and suggested fix. Do not copy code blocks for them. Downstream fix application reads the fix from the cited review file.
 
 ---
 
@@ -347,10 +382,10 @@ Append this YAML block at the very end of every `REVIEW_SUMMARY.md`, after all o
 ## Rules
 
 - Do NOT modify any codebase files, plan documents, or the diff file. You only produce `REVIEW_SUMMARY.md`.
-- Do NOT modify the raw review files or rebuttal files.
+- Do NOT modify the raw review files or rebuttal response files. The only files you create are `REVIEW_SUMMARY.md` and, in initial mode, `rebuttal-<REVIEWER>-C<N>.md` prompts.
 - Be specific when citing reviewers — use the model name and instance number from the review filename (e.g., `claude-code-1`, `opus-4.6-thinking-1`). This distinguishes between multiple instances of the same model.
 - Every finding from every review must appear in exactly one section (or in "Previously addressed" / "Filtered Issues" if applicable). Do not drop findings.
-- Keep descriptions concise but include enough detail to understand the issue and apply the fix or make a decision.
+- Keep descriptions concise but include enough detail to understand the issue and apply the fix or make a decision. The summary is the slowest thing you produce — do not restate what a `Details:` pointer already covers.
 - Sort findings within each section by agreement level (strong first, then moderate, then single) for code type; by severity (CRITICAL first) for plan/spec type.
 - When reviewers propose different fixes for the same issue, choose the most commonly suggested fix as the primary suggestion and note alternatives.
 - Issues in the POTENTIAL bucket should have lower confidence — do not promote single-reviewer low-confidence findings to higher severity just because they sound concerning.

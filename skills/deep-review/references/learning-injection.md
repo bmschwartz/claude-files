@@ -6,6 +6,8 @@
 
 Learnings from `.claude/learnings/` are injected into review prompts and feature exploration to prime reviewers and planners with historical context. This document defines how learnings are matched against targets, ranked, and formatted for injection.
 
+For `/deep-review` prompts this is implemented by `scripts/prepare_round.py` (Phase 2) — keep the script and this document in sync. Feature Explore and Complete still apply it by hand.
+
 ## Scope Matching Algorithm
 
 1. **Collect target file paths** from the current context:

@@ -1,6 +1,6 @@
 ---
 name: feature
-description: Orchestrates feature development with TDD + adversarial convergence via autonomous feedback loops. Explores codebase, writes specs, builds test-first, and converges via /review verdicts. Use when the user wants to implement a new feature, says "new feature", "I want to implement", "let's build", or describes functionality to add. Scales by feature tier (Light/Standard/Critical) with configurable autonomy.
+description: Orchestrates feature development with TDD + adversarial convergence via autonomous feedback loops. Explores codebase, writes specs, builds test-first, and converges via /deep-review verdicts. Use when the user wants to implement a new feature, says "new feature", "I want to implement", "let's build", or describes functionality to add. Scales by feature tier (Light/Standard/Critical) with configurable autonomy.
 disable-model-invocation: true
 model: opus
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(git *, mkdir *, date *)
@@ -12,7 +12,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(git *, mkdir *, date *)
 
 ## Overview
 
-Orchestrates feature development: **Explore → Design → Implement → Verify → Complete**. Each phase is a contract (receives/produces/invariants) defined in its own file under `phases/`. The orchestrator routes between phases, enforces safety gates, and manages loop limits. Review logic lives in `/review` — this skill calls it and reacts to its verdict.
+Orchestrates feature development: **Explore → Design → Implement → Verify → Complete**. Each phase is a contract (receives/produces/invariants) defined in its own file under `phases/`. The orchestrator routes between phases, enforces safety gates, and manages loop limits. Review logic lives in `/deep-review` — this skill calls it and reacts to its verdict.
 
 ## Arguments
 
@@ -43,8 +43,8 @@ Determine tier at the start. When ambiguous, start Light and escalate if complex
 
 | Tier | When | Phases | Review | Default Autonomy |
 |------|------|--------|--------|------------------|
-| **Light** | ≤3 files, no new modules, low risk | Explore → Design → Implement → Complete | `/review --quick` in Complete only | `autonomous` |
-| **Standard** | Typical feature | All phases | Full verify phase with `/review --external` | `supervised` |
+| **Light** | ≤3 files, no new modules, low risk | Explore → Design → Implement → Complete | `/deep-review --quick` in Complete only | `autonomous` |
+| **Standard** | Typical feature | All phases | Full verify phase with `/deep-review --external` | `supervised` |
 | **Critical** | Security, data model, public API, financial | All phases + mandatory spec adversary | Full verify + tighter cap (2 iterations) | `guided` |
 
 ### Autonomy Modes
@@ -96,8 +96,8 @@ Explore → Design ←───────────────────�
 **Three autonomous loops:**
 
 1. **TDD Loop** (Implement phase): write test → red → implement → green → refactor → next test. No human gate. Safety: max N fix attempts per test.
-2. **Review-Fix Loop** (Verify phase): code → `/review --verdict-only` → fix → re-review → converged. No human gate until cap or stall. Safety: max 3 rounds (2 for Critical), must show improving trend.
-3. **Design Convergence Loop** (Design phase): draft spec → `/review --type spec --verdict-only` → revise → converged. Safety: max 2 rounds, then human gate.
+2. **Review-Fix Loop** (Verify phase): code → `/deep-review --verdict-only` → fix → re-review → converged. No human gate until cap or stall. Safety: max 3 rounds (2 for Critical), must show improving trend.
+3. **Design Convergence Loop** (Design phase): draft spec → `/deep-review --type spec --verdict-only` → revise → converged. Safety: max 2 rounds, then human gate.
 
 ---
 
@@ -110,10 +110,10 @@ Read the phase contract file for the current phase. Check its receives/produces/
 | Explore | [phases/explore.md](${CLAUDE_SKILL_DIR}/phases/explore.md) | Context report produced |
 | Design | [phases/design.md](${CLAUDE_SKILL_DIR}/phases/design.md) | Human approves spec |
 | Implement | [phases/implement.md](${CLAUDE_SKILL_DIR}/phases/implement.md) | All tests pass, all phases complete |
-| Verify | [phases/verify.md](${CLAUDE_SKILL_DIR}/phases/verify.md) | `/review` verdict: CONVERGED (or cap with human acceptance) |
+| Verify | [phases/verify.md](${CLAUDE_SKILL_DIR}/phases/verify.md) | `/deep-review` verdict: CONVERGED (or cap with human acceptance) |
 | Complete | [phases/complete.md](${CLAUDE_SKILL_DIR}/phases/complete.md) | PR ready, retrospective written |
 
-**Light tier:** Skip Verify phase. Run `/review --type code --quick` in Complete instead. If that quick review finds CRITICAL issues, Light tier may **escalate**: the developer chooses between fix-and-rerun-quick, entering full Verify (one-time tier override), or accepting with per-CRITICAL acknowledgement. Escalation to Verify does not reclassify the feature — it runs one Verify cycle and returns to Complete.
+**Light tier:** Skip Verify phase. Run `/deep-review --type code --quick` in Complete instead. If that quick review finds CRITICAL issues, Light tier may **escalate**: the developer chooses between fix-and-rerun-quick, entering full Verify (one-time tier override), or accepting with per-CRITICAL acknowledgement. Escalation to Verify does not reclassify the feature — it runs one Verify cycle and returns to Complete.
 
 **Pre-existing feature path:** If all implementation phases resolve via "behavior pre-existed" with no net code changes, skip Verify → Complete with "feature pre-existed" path.
 
@@ -147,7 +147,7 @@ Triggered when implementation reveals SPEC.md is wrong or incomplete. Can occur 
 |------|--------|----------|
 | **Architect** | Human Developer | Vision, domain expertise, acceptance authority |
 | **Builder** | Claude Code (main context) | Spec, tests, implementation under TDD constraints |
-| **Reviewer** | `/review` skill (fresh context) | Review with structured verdicts |
+| **Reviewer** | `/deep-review` skill (fresh context) | Review with structured verdicts |
 
 ---
 
@@ -162,11 +162,11 @@ Triggered when implementation reveals SPEC.md is wrong or incomplete. Can occur 
 | Design | `/grill-me` (conditional) | Design interrogation before architecture |
 | Design | `feature-dev:code-architect` or `Plan` (Light) | Architecture blueprint |
 | Design | `Explore` (Critical — mandatory) | Spec adversary (read-only) |
-| Design | `/review --type spec` (optional) | Multi-model spec review |
+| Design | `/deep-review --type spec` (optional) | Multi-model spec review |
 | Implement | `Explore` subagent | Anti-slop scan (fresh context) |
-| Verify | `/review --type code --external --verdict-only` | Adversarial review + convergence |
+| Verify | `/deep-review --type code --external --verdict-only` | Adversarial review + convergence |
 | Complete | `/deslop-around:deslop-around apply` → `/polish` | Cleanup |
-| Complete | `/review --type code --quick` (Light) or conditional | Post-cleanup review guard |
+| Complete | `/deep-review --type code --quick` (Light) or conditional | Post-cleanup review guard |
 
 ## Additional Resources
 

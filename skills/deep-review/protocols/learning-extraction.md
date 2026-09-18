@@ -4,7 +4,7 @@
 
 ## Position in Pipeline
 
-Phase 4.7 runs **after** Phase 4.5 (deliberation) completes or is skipped, and **before** the `--verdict-only` gate that controls Phase 5. This positioning ensures learnings are always extracted, even when `/feature` calls `/review --verdict-only`.
+Phase 4.7 runs **after** Phase 4.5 (deliberation) completes or is skipped, and **before** the `--verdict-only` gate that controls Phase 5. This positioning ensures learnings are always extracted, even when `/feature` calls `/deep-review --verdict-only`.
 
 ```
 Phase 4: Synthesis → Phase 4.5: Deliberation → Phase 4.7: Learning Extraction → Phase 5: Post-Synthesis
@@ -79,7 +79,7 @@ For `recurrence` candidates, check if the new finding's files fall outside the e
 
 #### Interactive mode (no `--verdict-only`, no `--auto-learn`)
 
-Present each candidate to the user via `AskUserQuestion`:
+Present each candidate to the user via `AskQuestion` (Cursor) or `AskUserQuestion` (Claude Code):
 
 **For `new` candidates:**
 ```
@@ -145,7 +145,7 @@ options:
 
 Do **NOT** write any learning files. Instead, embed all candidates in the verdict block as the `learning_candidates` field (see [references/verdict-schema.md](${CLAUDE_SKILL_DIR}/references/verdict-schema.md)).
 
-The calling skill (e.g., `/feature`) is responsible for presenting the human gate and persisting accepted learnings. This keeps `/review`'s contract clean: extract candidates, let the caller decide when and how to gate them.
+The calling skill (e.g., `/feature`) is responsible for presenting the human gate and persisting accepted learnings. This keeps `/deep-review`'s contract clean: extract candidates, let the caller decide when and how to gate them.
 
 #### `--auto-learn` mode
 

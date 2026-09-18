@@ -21,12 +21,12 @@
 
 **Skip review if:** Verify phase converged with zero CRITICAL and the only changes since last review are from deslop/polish (cleanup-only).
 
-**Run `/review --type code --quick` when:**
+**Run `/deep-review --type code --quick` when:**
 - **Light tier** — this is the only review, run regardless
 - Any non-cleanup code changes were made after last review
 
 **If CRITICAL found:**
-- **Standard/Critical tier:** Run full `/review --type code --external`, return to Verify phase
+- **Standard/Critical tier:** Run full `/deep-review --type code --external`, return to Verify phase
 - **Light tier:** Present findings, offer: **Fix and re-run --quick** | **Enter full Verify** (override Light skip) | **Accept and proceed** (requires per-CRITICAL acknowledgement)
 
 ## Final Test Run
@@ -80,7 +80,7 @@ Present: what was built, files changed, test coverage, TDD compliance, convergen
 
 **Suggested Rules gate:** Present any "Suggested Rules" to the developer for approval before adding to CLAUDE.md — **hard gate in all autonomy modes** to prevent instruction creep.
 
-**Deferred learning candidates:** When `/review --verdict-only` returned verdicts containing `learning_candidates.items` during this feature's Verify phase, process them now. Check `.claude/learnings/LEARNINGS.md` for any learnings whose `source.feature` matches this feature's slug, and check verdict blocks from this feature's review rounds for unprocessed `learning_candidates`. For each candidate: present to developer with Save | Skip | Edit scope options (unless `autonomous` mode, in which case auto-accept). Write accepted learnings to `.claude/learnings/` per the review skill's `references/learning-schema.md`. Populate the retrospective's "Review Learnings" section with the results.
+**Deferred learning candidates:** When `/deep-review --verdict-only` returned verdicts containing `learning_candidates.items` during this feature's Verify phase, process them now. Check `.claude/learnings/LEARNINGS.md` for any learnings whose `source.feature` matches this feature's slug, and check verdict blocks from this feature's review rounds for unprocessed `learning_candidates`. For each candidate: present to developer with Save | Skip | Edit scope options (unless `autonomous` mode, in which case auto-accept). Write accepted learnings to `.claude/learnings/` per the review skill's `references/learning-schema.md`. Populate the retrospective's "Review Learnings" section with the results.
 
 ## Wrap-Up
 

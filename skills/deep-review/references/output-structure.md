@@ -8,7 +8,7 @@ Thorough mode always persists review artifacts. Quick mode only persists when `-
 
 ### Code type
 
-Review artifacts are written relative to `PROJECT_ROOT` (the directory where `/review` was invoked). When `PROJECT_ROOT == GIT_ROOT`, this is the repository root. When invoked from a subdirectory, artifacts live within that subdirectory so scoped external reviewers can access them.
+Review artifacts are written relative to `PROJECT_ROOT` (the directory where `/deep-review` was invoked). When `PROJECT_ROOT == GIT_ROOT`, this is the repository root. When invoked from a subdirectory, artifacts live within that subdirectory so scoped external reviewers can access them.
 
 ```
 PROJECT_ROOT/.claude/reviews/
@@ -19,12 +19,19 @@ PROJECT_ROOT/.claude/reviews/
 │   │   ├── review-claude-code-1.md                   # Built-in Claude reviewer
 │   │   └── REVIEW_SUMMARY.md                         # Synthesized summary + verdict
 │   ├── 20260212-150000-staged/                       # With --external --count 2
-│   │   ├── _review-prompt.md                         # Prompt sent to external models
+│   │   ├── _review-prompt.md                         # Prompt for all reviewers
 │   │   ├── _diff.patch
+│   │   ├── _reviewers-config.json                    # run_reviewers.py config
+│   │   ├── _external-results.json                    # run_reviewers.py stdout
+│   │   ├── _external-progress.log                    # run_reviewers.py stderr
 │   │   ├── review-claude-code-1.md
 │   │   ├── review-claude-code-2.md
 │   │   ├── review-composer-2.5-1.md
 │   │   ├── review-composer-2.5-2.md
+│   │   ├── review-gpt-5.6-terra-high-1.md
+│   │   ├── review-gpt-5.6-terra-high-2.md
+│   │   ├── review-gemini-3.7-flash-high-1.md
+│   │   ├── review-gemini-3.7-flash-high-2.md
 │   │   ├── REVIEW_SUMMARY.md
 │   │   ├── rebuttal-composer-2.5-1-C1.md             # Deliberation (if triggered)
 │   │   └── rebuttal-response-composer-2.5-1-C1.md
@@ -47,7 +54,7 @@ PROJECT_ROOT/.claude/reviews/
         ├── _review-prompt.md
         ├── review-opus-internal-1.md
         ├── review-opus-internal-2.md
-        ├── review-gemini-3.5-flash-1.md
+        ├── review-gemini-3.7-flash-high-1.md
         └── REVIEW_SUMMARY.md
 ```
 
@@ -76,13 +83,16 @@ PROJECT_ROOT/.claude/reviews/
 | File | Purpose | Created by |
 |------|---------|------------|
 | `REVIEW.md` | Links to most recent review round | Phase 5 |
-| `_review-prompt.md` | Prompt passed to external models (audit trail) | Phase 2 |
-| `_diff.patch` | The diff that was reviewed (audit trail, code type) | Phase 2 |
-| `review-claude-code-<N>.md` | Review from built-in Claude reviewer (code) | Orchestrator writes after Explore agent completes |
-| `review-opus-internal-<N>.md` | Review from built-in reviewer (plan/spec) | Orchestrator writes after Explore agent completes |
-| `review-<MODEL>-<N>.md` | Review from external model (immutable) | `run_reviewers.py` script |
+| `_review-prompt.md` | Prompt read by every reviewer (audit trail) | `prepare_round.py` (Phase 2) |
+| `_diff.patch` | The diff that was reviewed (audit trail, code type) | `prepare_round.py` (Phase 2) |
+| `_reviewers-config.json` | External reviewer tasks and runner settings | `prepare_round.py` (Phase 2) |
+| `_external-results.json` / `_external-progress.log` | Runner result JSON / progress log | `run_reviewers.py` (Phase 3) |
+| `review-claude-code-<N>.md` | Review from internal Claude reviewer (code) | `deep-reviewer` agent |
+| `review-opus-internal-<N>.md` | Review from internal reviewer (plan/spec) | `deep-reviewer` agent |
+| `review-<MODEL>-<N>.md` | Review from external model (immutable) | Task subagent (Cursor) or `run_reviewers.py` (Claude Code / `--agent-cli`) |
 | `REVIEW_SUMMARY.md` | Synthesized summary + verdict block | `review-synthesizer` agent |
-| `rebuttal-<REVIEWER>-C<N>.md` | Rebuttal prompt (deliberation) | Orchestrator |
-| `rebuttal-response-<REVIEWER>-C<N>.md` | Reviewer response (deliberation) | Orchestrator / `run_reviewers.py` |
+| `rebuttal-<REVIEWER>-C<N>.md` | Rebuttal prompt (deliberation) | `review-synthesizer` |
+| `rebuttal-response-<REVIEWER>-C<N>.md` | Reviewer response (deliberation) | `deep-reviewer`, Task subagent or `run_reviewers.py` |
+| `rebuttal-response-orchestrator-C<N>.md` | Direct resolution of a code-checkable conflict | Orchestrator |
 
 **Immutability rule:** Raw `review-*.md` files and `rebuttal-*.md` files must never be modified after creation. `REVIEW_SUMMARY.md` may be updated with apply/skip status in Phase 5.

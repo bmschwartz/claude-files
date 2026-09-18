@@ -72,7 +72,7 @@ Generate `PLAN.md` last (references other documents).
 
 ### 6. Design Convergence Loop (optional)
 
-**Standard/Critical tier:** Optionally run `/review --type spec --verdict-only` on the spec.
+**Standard/Critical tier:** Optionally run `/deep-review --type spec --verdict-only` on the spec.
 
 If `verdict.decision != CONVERGED`: revise spec based on findings, re-review. Max 2 rounds. If still not converged, proceed to human gate with findings noted.
 
@@ -80,9 +80,9 @@ If `verdict.decision != CONVERGED`: revise spec based on findings, re-review. Ma
 
 If the design convergence loop ran and did not fully converge, present remaining findings alongside the spec so the developer has full context.
 
-Present spec to user: **Approve and start (Recommended)** | **Run /review --type plan** | **I have changes**
+Present spec to user: **Approve and start (Recommended)** | **Run /deep-review --type plan** | **I have changes**
 
-- `/review --type plan`: invoke with project-root + plan-root. After completion, re-read PLAN.md for updated version, update CHECKPOINT.md Spec Version. Re-prompt gate.
+- `/deep-review --type plan`: invoke with project-root + plan-root. After completion, re-read PLAN.md for updated version, update CHECKPOINT.md Spec Version. Re-prompt gate.
 - Changes: incorporate, update docs, re-prompt gate.
 - Approved: `TodoWrite` for each implementation phase. Proceed to Implement.
 

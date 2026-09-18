@@ -1,6 +1,6 @@
 # Phase: Verify
 
-> Calls /review, reacts to verdict, autonomous review-fix loop.
+> Calls /deep-review, reacts to verdict, autonomous review-fix loop.
 
 ## Contract
 
@@ -19,9 +19,9 @@
 
 Update CHECKPOINT.md: Phase: Verify, Convergence Iteration: 0.
 
-Run `/review --type code --external --verdict-only`.
+Run `/deep-review --type code --external --verdict-only`.
 
-Read the verdict block from `REVIEW_SUMMARY.md` in the round directory reported by `/review`. The `verdict.round_dir` field contains the path. Parse the verdict between `<!-- VERDICT_START -->` and `<!-- VERDICT_END -->` markers.
+Read the verdict block from `REVIEW_SUMMARY.md` in the round directory reported by `/deep-review`. The `verdict.round_dir` field contains the path. Parse the verdict between `<!-- VERDICT_START -->` and `<!-- VERDICT_END -->` markers.
 
 ### Triage
 
@@ -47,7 +47,7 @@ Run full test suite. If fixes require spec changes → Spec Feedback Loop → ne
 
 ### Re-Review
 
-Run `/review --type code --external --verdict-only --changed-only` (scoped to files changed since last round). If fixes touched >50% of files in scope, use full review instead.
+Run `/deep-review --type code --external --verdict-only --changed-only` (scoped to files changed since last round). If fixes touched >50% of files in scope, use full review instead.
 
 Increment Convergence Iteration. Return to Triage.
 

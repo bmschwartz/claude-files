@@ -14,11 +14,11 @@ The verdict block in `REVIEW_SUMMARY.md` contains a `decision` field computed as
 
 ## How Callers Use the Verdict
 
-### Direct invocation (user runs `/review`)
+### Direct invocation (user runs `/deep-review`)
 
 The verdict informs the user's decision. The post-synthesis phase (fix application for code, gather-input for plan) runs automatically unless `--verdict-only`.
 
-### Programmatic invocation (`/feature` calls `/review --verdict-only`)
+### Programmatic invocation (`/feature` calls `/deep-review --verdict-only`)
 
 The caller reads the verdict block and routes:
 
@@ -28,7 +28,7 @@ verdict.decision == NEEDS_FIXES → fix findings, re-review (review-fix loop)
 verdict.decision == BLOCK → fix critical findings or escalate to human
 ```
 
-The caller tracks iteration count, convergence trend, and safety limits. `/review` does NOT track cross-iteration state — each invocation is stateless.
+The caller tracks iteration count, convergence trend, and safety limits. `/deep-review` does NOT track cross-iteration state — each invocation is stateless.
 
 ## Convergence Trend (computed by callers)
 
@@ -42,11 +42,11 @@ The verdict provides `findings.critical` and `findings.important` counts. Caller
 
 ## Quorum
 
-Synthesis begins when **75% of reviewers** (rounded up) have completed. This balances speed (don't wait for stragglers) with coverage (enough perspectives for meaningful agreement analysis).
+External reviewers: `run_reviewers.py` (or the Cursor orchestrator) waits until **75% of externals** (rounded up) have succeeded, gives stragglers a 90s grace period, then cuts them off. This balances speed (don't wait for stragglers) with coverage (enough perspectives for meaningful agreement analysis).
 
-Late reviews (completing after synthesis) are appended as addenda rather than triggering re-synthesis.
+Internal reviewers: synthesis waits for all of them — they are the highest-signal source — unless one is still running 10 minutes after everything else finished. Late reviews (completing after synthesis) are appended as addenda rather than triggering re-synthesis.
 
-## What `/review` Does NOT Track
+## What `/deep-review` Does NOT Track
 
 These are caller responsibilities, not review-level concerns:
 

@@ -1,20 +1,13 @@
 # Plan Review Prompt Template
 
-> This template generates `_review-prompt.md` for plan/spec review rounds. Fill in bracketed placeholders.
+> `scripts/prepare_round.py` fills this template to produce `_review-prompt.md`. Only the fenced block is used. Do not hand-write the prompt.
+>
+> `{{CONTEXT_SECTIONS}}` is generated, in this order, omitting any that are empty: `## Workspace Scope` (subdirectory invocation), `## Excluded Directories`, `## Change Context` (`--context-stdin`), `## Known Project Learnings` (matched against file paths referenced in the plan documents, per [learning-injection.md](learning-injection.md)).
 
 ```
 Review the implementation plan documents in this workspace. Read every file thoroughly before beginning your analysis.
 
-<If workspace is scoped (GIT_PREFIX is non-empty)>
-## Workspace Scope
-This review is scoped to a subdirectory of a larger repository. Focus your codebase verification on the code within this workspace.
-</If>
-
-<If EXCLUDE_DIRS is non-empty>
-## Excluded Directories
-Do not explore or reference code in these directories: <EXCLUDE_DIRS comma-separated>
-They contain unrelated code from other work-in-progress branches.
-</If>
+{{CONTEXT_SECTIONS}}
 
 If a CLAUDE.md file exists in the workspace root, read it first for project-specific conventions and guidelines. Evaluate the plan's compliance with these conventions.
 
@@ -27,16 +20,6 @@ The plan documents follow these conventions:
 - FIXTURES.md — Test ground truth: pytest fixtures, sample data, assertions
 
 Not all documents may be present. Evaluate what exists.
-
-<If project learnings matched>
-## Known Project Learnings
-
-The following patterns have been identified in prior reviews of this codebase. Evaluate whether the proposed plan addresses or risks repeating these patterns:
-
-<Numbered list of matched learnings per injection format from learning-injection.md>
-
-When evaluating the plan, cross-reference against these known patterns. Plans that proactively address known learnings should be noted positively. Plans that risk repeating known issues should be flagged with the learning ID.
-</If>
 
 ## Codebase Verification (CRITICAL)
 
