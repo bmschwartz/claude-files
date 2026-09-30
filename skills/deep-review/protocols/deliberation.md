@@ -82,12 +82,12 @@ Confirm the updated `REVIEW_SUMMARY.md`:
 
 ```
 <ROUND_DIR>/
-├── _review-prompt.md
+├── _review-prompt-<key>.md       # one per reviewer model
 ├── _diff.patch (code) or plan docs referenced
 ├── review-cursor-internal-1.md   # or review-claude-code-1.md on Claude Code
 ├── review-composer-2.5-1.md
 ├── review-gpt-5.6-terra-high-1.md
-├── review-gemini-3.7-flash-high-1.md
+├── review-gemini-3.8-flash-high-1.md
 ├── REVIEW_SUMMARY.md              # Updated with Deliberation Outcomes + new verdict
 ├── rebuttal-gpt-5.6-terra-high-1-C1.md      # Rebuttal prompt (written by synthesizer)
 ├── rebuttal-response-gpt-5.6-terra-high-1-C1.md  # Reviewer's response

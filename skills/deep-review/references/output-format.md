@@ -4,6 +4,9 @@
 
 ## Sections (always shown regardless of --skip-fix)
 
+### Prompt profile warnings (only when there are any)
+Before everything else, one line per warning from `prepare_round.py`'s `profile_warnings` and from the internal reviewer's model check: a reviewer ran on the shared baseline prompt, or on a profile tuned for a different model version. These mean part of the review ran on untuned prompts, so they go first rather than in a footer.
+
 ### 0. Change Overview
 `git diff --stat` output showing files changed, insertions, deletions.
 

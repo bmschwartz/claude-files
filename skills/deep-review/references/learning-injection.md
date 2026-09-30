@@ -65,7 +65,7 @@ Each entry shows:
 
 | Point | When | What to match against | Reference |
 |-------|------|-----------------------|-----------|
-| Review prompt (Phase 2) | After writing `_review-prompt.md` | Diff file paths | `SKILL.md` Phase 2 |
+| Review prompt (Phase 2) | In every `_review-prompt-<key>.md` (all models get the same learnings) | Diff file paths | `SKILL.md` Phase 2 |
 | Feature Explore | Pattern Discovery agent | Inferred feature file paths | `feature/phases/explore.md` |
 | Feature Complete | Retrospective generation | Feature's review round learnings | `feature/phases/complete.md` |
 

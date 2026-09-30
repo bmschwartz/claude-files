@@ -9,6 +9,8 @@ allowed-tools: Read, Write, Edit, Grep, Glob, Bash(git diff*, git log*, git bran
 
 # Deep Review
 
+> **v1.4.0** · Per-model prompts: every reviewer model gets the same rubric, delivered the way its vendor's official guidance recommends (section order, framing, exploration budget), from a profile in [references/model-profiles/](${CLAUDE_SKILL_DIR}/references/model-profiles/README.md). A model without a profile falls back to the shared baseline with a loud warning. External reviewers run with `stream-json`, so every run logs its tool calls and a timeout shows how far it got.
+>
 > **v1.3.0** · Speed pass: round setup is one `prepare_round.py` call; internal reviewers (`deep-reviewer`) write their own review files; `run_reviewers.py` enforces an external quorum with a straggler cut-off and no longer retries timeouts; leaner synthesis output; cheaper deliberation. Cursor external reviewers use Task subagents; agent CLI remains Claude Code default and Cursor fallback.
 
 A unified deep-review skill that orchestrates parallel AI reviewers, synthesizes findings with conflict detection, optionally runs file-relay deliberation to resolve reviewer disagreements, and produces a structured verdict. Parameterized by `--type` to handle code diffs, implementation plans, and specs through the same pipeline.
@@ -18,8 +20,8 @@ A unified deep-review skill that orchestrates parallel AI reviewers, synthesizes
 - **Skill directory:** `REVIEW_SKILL_DIR="${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/deep-review}"`. Every `${CLAUDE_SKILL_DIR}/...` path below means `$REVIEW_SKILL_DIR/...`.
 - **Invoke as `/deep-review`.** Cursor's built-in `/review` and `/multi-model-review` are separate, lighter workflows.
 - **Questions:** use `AskQuestion` in Cursor, `AskUserQuestion` in Claude Code. Same options either way.
-- **Internal reviewers:** use the custom `deep-reviewer` agent (user-level), which writes its own review file. Claude Code: `model: opus`. Cursor: `model: inherit` (do not pass `opus` to Cursor's Task tool). Only if `deep-reviewer` is unavailable, fall back to `Explore` / `explore` and have the orchestrator write each returned review to its output path.
-- **External reviewers:** On **Cursor**, launch readonly `generalPurpose` Task subagents in parallel (same mechanism as `/multi-model-review`, but with `_review-prompt.md` and `review-*.md` outputs). On **Claude Code**, use `run_reviewers.py` + `agent` CLI. See [references/external-reviewers.md](${CLAUDE_SKILL_DIR}/references/external-reviewers.md). Pass `--agent-cli` to force agent CLI on Cursor.
+- **Internal reviewers:** use the custom `deep-reviewer` agent (user-level), which writes its own review file and reports its model ID. Claude Code: `model: opus` (the alias is kept on purpose; the model-ID check catches when it moves to a version the `opus` profile wasn't tuned for). Cursor: `model: inherit` (do not pass `opus` to Cursor's Task tool). Only if `deep-reviewer` is unavailable, fall back to `Explore` / `explore` and have the orchestrator write each returned review to its output path.
+- **External reviewers:** On **Cursor**, launch readonly `generalPurpose` Task subagents in parallel (same mechanism as `/multi-model-review`, but with each model's `_review-prompt-<key>.md` and `review-*.md` outputs). On **Claude Code**, use `run_reviewers.py` + `agent` CLI. See [references/external-reviewers.md](${CLAUDE_SKILL_DIR}/references/external-reviewers.md). Pass `--agent-cli` to force agent CLI on Cursor.
 - **Synthesizer:** launch the custom `review-synthesizer` agent (user-level), not Cursor's built-in synthesizer subagent type unless the custom agent is missing.
 
 ## Arguments
@@ -43,7 +45,7 @@ A unified deep-review skill that orchestrates parallel AI reviewers, synthesizes
 | `--no-external` | Disable external reviewers; internal `deep-reviewer` reviewers only |
 | `--agent-cli` | Force `agent` CLI for external reviewers (Cursor only; skips Task subagent path) |
 | `--models <list>` | Override default external models (implies `--external`) |
-| `--count <N>` | Number of reviewer instances per model (default: 2) |
+| `--count <N>` | Number of reviewer instances per model (default: 1) |
 | `--unstaged` | Review unstaged changes |
 | `--all` | Review both staged and unstaged |
 | `file1 file2` | Review specific files |
@@ -66,7 +68,7 @@ A unified deep-review skill that orchestrates parallel AI reviewers, synthesizes
 | `<project-root>` | Positional: root of codebase (required) |
 | `<plan-root>` | Positional: root of plan directory (required) |
 | `--models <list>` | Override default external models |
-| `--count <N>` | Number of reviewer instances per model (default: 2) |
+| `--count <N>` | Number of reviewer instances per model (default: 1) |
 | `--changed-only` | Scope to plan docs modified since last review round |
 | `--dry-run` | Show what would be reviewed without running |
 
@@ -79,9 +81,11 @@ A unified deep-review skill that orchestrates parallel AI reviewers, synthesizes
 | `--no-learn` | Skip learning extraction (Phase 4.7) entirely |
 | `--auto-learn` | Auto-accept learning candidates without human gate |
 
-**Default external models:** `composer-2.5`, `gpt-5.6-terra-high`, `gemini-3.7-flash-high`
+**Default external models:** `composer-2.5`, `gpt-5.6-terra-high`, `gemini-3.8-flash-high`, `grok-4.7-high`
 
-> `cursor-grok-4.6-high` was dropped from the defaults: across the review history it was never the sole source of a CRITICAL/IMPORTANT finding and was a frequent straggler/timeout. Pass it via `--models` to include it.
+Each model's prompt comes from its profile in [references/model-profiles/](${CLAUDE_SKILL_DIR}/references/model-profiles/README.md), keyed by the slug without its effort suffix (`gpt-5.6-terra-high` → `gpt-5.6-terra`). When you change a default model or pass a new one with `--models`, add its profile from the vendor's official guidance; until then it runs on the shared baseline and every review shows a warning.
+
+> `grok-4.7-high` replaces `cursor-grok-4.6-high`, which was dropped from the defaults for never being the sole source of a CRITICAL/IMPORTANT finding and for frequent stragglers/timeouts. If 4.7 shows the same pattern, drop it and pass it via `--models` when wanted.
 >
 > Successful external reviewers finish in 3–9 minutes. `run_reviewers.py` uses `timeout_seconds: 480`, does not retry timeouts, and once 75% of externals have succeeded gives stragglers 90s before cutting them off (`quorum_fraction` / `quorum_grace_seconds` in `_reviewers-config.json`).
 
@@ -174,12 +178,12 @@ Read `PLAN.md`, extract current version path, verify directory exists. Read all 
 
 **Contract:**
 - **Receives:** Validated inputs, context report
-- **Produces:** Round directory with `_review-prompt.md` and (for code) `_diff.patch`
-- **Invariants:** Round directory exists. Prompt file written. Diff captured (code type).
+- **Produces:** Round directory with one `_review-prompt-<key>.md` per reviewer model and (for code) `_diff.patch`
+- **Invariants:** Round directory exists. Prompt files written. Diff captured (code type).
 
 #### Code type
 
-Run **one** Bash call. The script creates the round directory, captures `_diff.patch`, matches and injects learnings (including the staleness check), fills [references/code-review-prompt.md](${CLAUDE_SKILL_DIR}/references/code-review-prompt.md) into `_review-prompt.md`, and writes `_reviewers-config.json`:
+Run **one** Bash call. The script creates the round directory, captures `_diff.patch`, matches and injects learnings (including the staleness check), renders [references/code-review-prompt.md](${CLAUDE_SKILL_DIR}/references/code-review-prompt.md) through each reviewer model's profile into `_review-prompt-<key>.md`, and writes `_reviewers-config.json`:
 
 ```bash
 python3 "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/deep-review}/scripts/prepare_round.py" --type code \
@@ -201,7 +205,7 @@ CONTEXT
 | files | `HEAD -- <file> ...` | `files` |
 | `--changed-only` | the delta range since the last round | `delta` |
 
-The script adds `--relative` itself when `GIT_PREFIX` is non-empty and always matches learnings against repo-root-relative paths. Parse its stdout JSON: on `"status": "error"` stop and report. Otherwise show `diff_stat`, warn if `large_diff` (> 3,000 lines), call out `manifest_changes`, and report `learnings` (matched, omitted, expired) and `warnings`. Keep `round_dir`, `prompt_path`, `input_path`, `internal_outputs`, `external_outputs` and `reviewers_config_path` for Phase 3.
+The script adds `--relative` itself when `GIT_PREFIX` is non-empty and always matches learnings against repo-root-relative paths. Parse its stdout JSON: on `"status": "error"` stop and report. Otherwise show `diff_stat`, warn if `large_diff` (> 3,000 lines), call out `manifest_changes`, and report `learnings` (matched, omitted, expired) and `warnings`. If `profile_warnings` is non-empty, show each one prominently now and keep them for the synthesizer and the final output: those reviewers run on the untuned shared baseline. Keep `round_dir`, `internal_prompt_path`, `internal_profile`, `input_path`, `internal_outputs`, `external_outputs`, `reviewers_config_path` and `profile_warnings` for Phase 3.
 
 With `--dry-run`, pass `--dry-run` to the script, display its output, and stop.
 
@@ -217,14 +221,14 @@ python3 "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/deep-review}/scripts/prepare_r
   [--models <list>] [--count <N>] [--no-external] [--context-stdin <<'CONTEXT' ... CONTEXT]
 ```
 
-With `--plan-root`, the round directory is `<plan-root>/reviews/<timestamp>/`; otherwise it is `PROJECT_ROOT/.claude/reviews/<branch>/<timestamp>-<type>/`. The script fills [references/plan-review-prompt.md](${CLAUDE_SKILL_DIR}/references/plan-review-prompt.md) and matches learnings against file paths referenced in the plan documents. Handle its JSON output as for code type.
+With `--plan-root`, the round directory is `<plan-root>/reviews/<timestamp>/`; otherwise it is `PROJECT_ROOT/.claude/reviews/<branch>/<timestamp>-<type>/`. The script renders [references/plan-review-prompt.md](${CLAUDE_SKILL_DIR}/references/plan-review-prompt.md) through the same model profiles and matches learnings against file paths referenced in the plan documents. Handle its JSON output as for code type.
 
 ---
 
 ### Phase 3: Review Execution
 
 **Contract:**
-- **Receives:** Round directory, prompt file, reviewer configuration
+- **Receives:** Round directory, prompt files, reviewer configuration
 - **Produces:** `review-*.md` files in round directory
 - **Invariants:** At least one review succeeds (zero-success guard stops the process)
 
@@ -238,14 +242,16 @@ Keep the agent prompt short — everything else is in the prompt file. Pass only
 
 ```
 mode: review
-prompt file: <prompt_path>
+prompt file: <internal_prompt_path>
 input: <input_path>
 output path: <internal_outputs[N-1]>
 workspace root: <PROJECT_ROOT> (explore only inside it)
 excluded directories: <EXCLUDE_DIRS, or "none">
 ```
 
-Do not paste the diff, CLAUDE.md or spec docs into the agent prompt. Each agent writes its own review file and replies with a one-line status — **do not re-write its review**. If the file is missing or under 200 bytes when the agent reports done, mark that reviewer failed.
+Do not paste the diff, CLAUDE.md or spec docs into the agent prompt. Each agent writes its own review file and replies with a one-line status, `<output path> | model <id> | <counts>` — **do not re-write its review**. If the file is missing or under 200 bytes when the agent reports done, mark that reviewer failed.
+
+**Model check:** compare the reported model ID with `internal_profile.verified_against`. If they differ, add a profile warning: "Internal reviewer ran as `<reported>`, but the `opus` profile was tuned for `<verified_against>`; re-check references/model-profiles/opus.md against Anthropic's guidance for the new model." If the reply has no model ID, warn that the check could not run.
 
 Fallback when `deep-reviewer` is unavailable: launch `Explore` / `explore` with the same paths, then write each returned review to its `internal_outputs` path.
 
@@ -285,7 +291,7 @@ When each Task completes, write its full response to the task's `output_path`. T
 python3 "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/deep-review}/scripts/run_reviewers.py" < "<ROUND_DIR>/_reviewers-config.json" > "<ROUND_DIR>/_external-results.json" 2> "<ROUND_DIR>/_external-progress.log"
 ```
 
-You are notified when it exits; then parse `_external-results.json`. Each result: `status` (`success` | `retry_success` | `failed` | `cut_off`), `output_path`, `file_size`, optional `error`. `cut_off` means the reviewer was still running when the external quorum grace period expired.
+You are notified when it exits; then parse `_external-results.json`. Each result: `status` (`success` | `retry_success` | `failed` | `cut_off`), `output_path`, `file_size`, optional `error`, and `telemetry` (tool-call counts, the last tool call, token usage; the full list is in `_log-<output stem>.jsonl`). `cut_off` means the reviewer was still running when the external quorum grace period expired. For a timed-out or cut-off reviewer, report its tool-call count and last tool call, which show whether it was over-exploring or just slow.
 
 **If Cursor Task path partially fails:** retry failed reviewers once via Task; any still failing may fall back to a single-task `run_reviewers.py` call if `agent` is available and user did not forbid it.
 
@@ -304,7 +310,7 @@ Report progress as each reviewer completes. For missing/errored review files, no
 
 **Start trigger:** Begin synthesis when the external run has exited (it enforces its own 75% quorum and straggler cut-off) **and** every internal reviewer has finished. Internal reviewers are the highest-signal source, so do not start without them — except: if an internal reviewer is still running 10 minutes after everything else finished, start without it and append its review as a **"Late Review"** addendum when it lands. On Cursor (Task externals), apply the same rule with a 75% quorum over the external Tasks.
 
-Launch `review-synthesizer` agent in **foreground** with: type, mode `initial`, round directory, completed review file paths, failed reviews, diff/plan path, and focus filter.
+Launch `review-synthesizer` agent in **foreground** with: type, mode `initial`, round directory, completed review file paths, failed reviews, diff/plan path, focus filter, and the prompt profile warnings (from `profile_warnings` plus the internal model check).
 
 The synthesizer cross-references findings, categorizes them, detects conflicts (writing their rebuttal prompts), generates the verdict block, and writes `REVIEW_SUMMARY.md`. Verify it exists.
 
@@ -434,8 +440,8 @@ See [references/output-format.md](${CLAUDE_SKILL_DIR}/references/output-format.m
 
 | Script | Purpose | When used |
 |--------|---------|-----------|
-| `prepare_round.py` | Scoping, round dir, diff, learnings injection + staleness, prompt, reviewer config | Phase 2, all types |
-| `run_reviewers.py` | Runs `agent` CLI concurrently for external reviewers; quorum cut-off | Claude Code Phase 3; Cursor with `--agent-cli`; deliberation |
+| `prepare_round.py` | Scoping, round dir, diff, learnings injection + staleness, per-model prompts from profiles, reviewer config | Phase 2, all types |
+| `run_reviewers.py` | Runs `agent` CLI concurrently for external reviewers with `stream-json` telemetry; quorum cut-off | Claude Code Phase 3; Cursor with `--agent-cli`; deliberation |
 
 ---
 
@@ -459,8 +465,9 @@ See [references/output-format.md](${CLAUDE_SKILL_DIR}/references/output-format.m
 
 - **References:**
   - [references/external-reviewers.md](${CLAUDE_SKILL_DIR}/references/external-reviewers.md) — Cursor Task vs agent CLI backends, launch rules, deliberation re-engagement
-  - [references/code-review-prompt.md](${CLAUDE_SKILL_DIR}/references/code-review-prompt.md) — Code review prompt template for external reviewers
-  - [references/plan-review-prompt.md](${CLAUDE_SKILL_DIR}/references/plan-review-prompt.md) — Plan review prompt template for external reviewers
+  - [references/code-review-prompt.md](${CLAUDE_SKILL_DIR}/references/code-review-prompt.md) — Code review prompt sections (the shared rubric) for all reviewers
+  - [references/plan-review-prompt.md](${CLAUDE_SKILL_DIR}/references/plan-review-prompt.md) — Plan review prompt sections (the shared rubric) for all reviewers
+  - [references/model-profiles/README.md](${CLAUDE_SKILL_DIR}/references/model-profiles/README.md) — Per-model profiles: format, keys, how to add or bump a model
   - [references/verdict-schema.md](${CLAUDE_SKILL_DIR}/references/verdict-schema.md) — Verdict block schema documentation (v2)
   - [references/output-structure.md](${CLAUDE_SKILL_DIR}/references/output-structure.md) — Directory layout, branch sanitization, scope suffixes
   - [references/output-format.md](${CLAUDE_SKILL_DIR}/references/output-format.md) — Complete code review output format (sections 0-13)

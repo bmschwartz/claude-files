@@ -6,6 +6,14 @@ runs all agent CLI invocations concurrently using asyncio, and
 outputs structured JSON results to stdout. Progress is reported
 to stderr.
 
+Each task's review_prompt_path is sent to the agent verbatim; it is
+already the complete prompt for that model (prepare_round.py renders it).
+The agent runs with --output-format stream-json. The review is the text the
+model wrote after its last tool call (narration between tool calls is
+dropped; see review_text), and each reviewer's tool calls are kept as a
+compact log (_log-<output stem>.jsonl) and summarised in its result, so a
+timed-out or cut-off reviewer still shows how far it got.
+
 Launches are staggered to avoid the agent CLI's config-file rename
 race. Timeouts are not retried; only fast failures are. Once
 quorum_fraction of the tasks have succeeded, stragglers get
@@ -22,6 +30,7 @@ import re
 import shutil
 import signal
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -40,6 +49,7 @@ DEFAULT_QUORUM_FRACTION = 0.75
 DEFAULT_QUORUM_GRACE_SECONDS = 90
 DEFAULT_LAUNCH_STAGGER_SECONDS = 1.5
 DEFAULT_MIN_OUTPUT_BYTES = 200
+TARGET_ARG_KEYS = ("path", "pattern", "query", "command", "globPattern", "targetDirectory", "url")
 
 
 def log(msg: str) -> None:
@@ -53,22 +63,23 @@ def validate_config(config: dict) -> None:
         raise ValueError("Config must contain a 'tasks' list")
     if not config["tasks"]:
         raise ValueError("Tasks list is empty")
-    required = {"model", "instance", "type", "project_root",
-                "review_prompt_path", "output_path", "input_path", "input_type"}
+    required = {"model", "instance", "project_root", "review_prompt_path", "output_path"}
     seen_outputs: set[str] = set()
     for i, task in enumerate(config["tasks"]):
         missing = required - set(task.keys())
         if missing:
             raise ValueError(f"Task {i} missing fields: {missing}")
-        if task["type"] not in ("code", "plan", "spec"):
+        if task.get("type", "code") not in ("code", "plan", "spec"):
             raise ValueError(f"Task {i} has invalid type: {task['type']}")
+        if not Path(task["review_prompt_path"]).is_file():
+            raise ValueError(
+                f"Task {i} review_prompt_path does not exist: {task['review_prompt_path']!r}"
+            )
         if not Path(task["project_root"]).is_dir():
             raise ValueError(
                 f"Task {i} has invalid project_root: {task['project_root']!r} "
                 "is not an existing directory"
             )
-        if task["input_type"] not in ("diff", "plan_dir"):
-            raise ValueError(f"Task {i} has invalid input_type: {task['input_type']}")
         if not _SAFE_MODEL_RE.match(str(task["model"])):
             raise ValueError(
                 f"Task {i} has unsafe model name: {task['model']!r} "
@@ -105,58 +116,92 @@ def validate_config(config: dict) -> None:
             raise ValueError(f"{key} must be a non-negative number, got {value}")
 
 
-def build_preamble(task: dict) -> str:
-    """Generate the type-specific context preamble for a reviewer."""
-    if task.get("prompt_kind") == "rebuttal":
-        return ""
-    if task["input_type"] == "diff":
-        preamble = (
-            "You are reviewing code changes (diff) for a project.\n"
-            f"The diff file is located at: {task['input_path']}\n"
-            "The project codebase is in this workspace.\n"
-            "Read the diff file first, then use the codebase to understand "
-            "the context around the changes being reviewed.\n"
-        )
-    else:
-        preamble = (
-            f"The plan documents are located at: {task['input_path']}\n"
-            "The project codebase is in this workspace.\n"
-            "Read all plan documents first, then use the codebase "
-            "to verify claims in the plan.\n"
-        )
-
-    exclude_dirs = task.get("exclude_dirs", [])
-    if exclude_dirs:
-        dirs_str = ", ".join(f"`{d}`" for d in exclude_dirs)
-        preamble += (
-            f"\n**IMPORTANT: Do not explore or read files in these directories: "
-            f"{dirs_str}. They contain unrelated code from other branches and "
-            "will produce misleading context.**\n"
-        )
-
-    return preamble
+def tool_entry(tool_call: dict, project_root: str) -> tuple[str, str]:
+    """(tool name, target) for a stream-json tool_call payload."""
+    name = next((k for k in tool_call if k.endswith("ToolCall")), "unknown")
+    args = tool_call.get(name, {}).get("args", {}) if isinstance(tool_call.get(name), dict) else {}
+    target = next((str(args[k]) for k in TARGET_ARG_KEYS if args.get(k)), "")
+    if target.startswith(project_root.rstrip("/") + "/"):
+        target = target[len(project_root.rstrip("/")) + 1:]
+    return name.removesuffix("ToolCall"), target[:200]
 
 
-def write_combined_prompt(task: dict, output_dir: Path) -> Path:
-    """Write a combined prompt file (preamble + review prompt content).
+def summarize_events(raw_path: Path, log_path: Path, task: dict,
+                     started_ms: int) -> tuple[dict, dict | None, list[str]]:
+    """Turn the raw stream-json output into a compact tool log and a summary.
 
-    Returns the path to the combined prompt file.
+    Returns (telemetry, result_event, text_segments), where text_segments are
+    the model's text blocks split at each tool call. Tolerates a truncated
+    last line, which is what a killed process leaves behind.
     """
-    combined_path = output_dir / f"_prompt-{Path(task['output_path']).stem}.md"
-
-    preamble = build_preamble(task)
-    prompt_content = Path(task["review_prompt_path"]).read_text()
-
-    combined_path.write_text(preamble + "\n" + prompt_content)
-    return combined_path
-
-
-def cleanup_prompt_file(path: Path) -> None:
-    """Remove a combined prompt temp file if it exists."""
+    started: dict[str, tuple[int, str, str]] = {}
+    entries: list[dict] = []
+    tools: dict[str, int] = {}
+    segments: list[str] = [""]
+    result_event = None
+    reported_model = None
     try:
-        path.unlink(missing_ok=True)
-    except OSError:
-        pass
+        lines = raw_path.read_text(errors="replace").splitlines()
+    except FileNotFoundError:
+        lines = []
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        kind, subtype = event.get("type"), event.get("subtype")
+        if kind == "system" and subtype == "init":
+            reported_model = event.get("model")
+        elif kind == "assistant":
+            content = event.get("message", {}).get("content", [])
+            segments[-1] += "".join(c.get("text", "") for c in content if isinstance(c, dict))
+        elif kind == "tool_call" and subtype == "started":
+            if segments[-1].strip():
+                segments.append("")
+            name, target = tool_entry(event.get("tool_call", {}), task["project_root"])
+            started[event.get("call_id", "")] = (event.get("timestamp_ms", started_ms), name, target)
+            tools[name] = tools.get(name, 0) + 1
+        elif kind == "tool_call" and subtype == "completed":
+            begin, name, target = started.pop(
+                event.get("call_id", ""), (event.get("timestamp_ms", started_ms), "unknown", ""))
+            entries.append({
+                "t": round((begin - started_ms) / 1000, 1),
+                "secs": round((event.get("timestamp_ms", begin) - begin) / 1000, 1),
+                "tool": name,
+                "target": target,
+            })
+        elif kind == "result":
+            result_event = event
+    for begin, name, target in started.values():  # still running when the process stopped
+        entries.append({"t": round((begin - started_ms) / 1000, 1), "secs": None,
+                        "tool": name, "target": target})
+    entries.sort(key=lambda e: e["t"])
+    log_path.write_text("".join(json.dumps(e) + "\n" for e in entries))
+    telemetry = {
+        "reported_model": reported_model,
+        "tool_calls": sum(tools.values()),
+        "tools": tools,
+        "last_tool": f"{entries[-1]['tool']} {entries[-1]['target']}".strip() if entries else None,
+        "log_path": str(log_path),
+    }
+    if result_event:
+        telemetry["api_duration_seconds"] = round(result_event.get("duration_api_ms", 0) / 1000, 1)
+        telemetry["usage"] = result_event.get("usage")
+    return telemetry, result_event, [seg.strip() for seg in segments if seg.strip()]
+
+
+def review_text(result_event: dict, segments: list[str], min_bytes: int) -> str:
+    """The review: the text after the last tool call.
+
+    Some models narrate between tool calls despite the prompt, and the result
+    event joins every text block together. Prefer the final block, then the
+    longest, then the joined result, taking the first that is long enough.
+    """
+    joined = str(result_event.get("result", "")).strip()
+    for candidate in (segments[-1:], [max(segments, key=len)] if segments else []):
+        if candidate and len(candidate[0].encode()) >= min_bytes:
+            return candidate[0]
+    return joined
 
 
 def task_label(task: dict) -> str:
@@ -174,8 +219,8 @@ def kill_process_group(proc: asyncio.subprocess.Process) -> None:
             pass
 
 
-def failure_result(task: dict, status: str, error: str) -> dict:
-    return {
+def failure_result(task: dict, status: str, error: str, telemetry: dict | None = None) -> dict:
+    result = {
         "model": task["model"],
         "instance": task["instance"],
         "output_path": str(Path(task["output_path"])),
@@ -184,71 +229,96 @@ def failure_result(task: dict, status: str, error: str) -> dict:
         "duration_seconds": 0,
         "error": error,
     }
+    if telemetry:
+        result["telemetry"] = telemetry
+    return result
 
 
-def write_failure_note(task: dict, heading: str, error: str) -> None:
+def write_failure_note(task: dict, heading: str, error: str, telemetry: dict | None = None) -> None:
+    note = f"# {heading}\n\n{error}\n"
+    if telemetry and telemetry.get("tool_calls"):
+        note += (
+            f"\nTool calls before it stopped: {telemetry['tool_calls']} "
+            f"(last: {telemetry['last_tool']}). Full log: {telemetry['log_path']}\n"
+        )
     try:
-        Path(task["output_path"]).write_text(f"# {heading}\n\n{error}\n")
+        Path(task["output_path"]).write_text(note)
     except OSError:
         pass
 
 
 async def run_single_reviewer(
     task: dict,
-    combined_prompt_path: Path,
     timeout: int,
     min_output_bytes: int,
+    telemetry: dict,
 ) -> dict:
     """Run the agent CLI for a single reviewer task.
 
-    Returns a result dict with status, duration, file_size, and error info.
+    Fills `telemetry` in place (also on timeout or cancellation) and returns a
+    result dict with status, duration and file_size.
     """
-    label = task_label(task)
     output_path = Path(task["output_path"])
+    log_path = output_path.with_name(f"_log-{output_path.stem}.jsonl")
+    # The raw stream stays outside the workspace: other reviewers must not read it.
+    fd, raw_name = tempfile.mkstemp(prefix=f"deep-review-{output_path.stem}-", suffix=".jsonl")
+    os.close(fd)
+    raw_path = Path(raw_name)
     start = time.monotonic()
+    started_ms = int(time.time() * 1000)
 
-    # Open file descriptors for stdin/stdout redirection
-    with open(combined_prompt_path, "r") as fin, \
-         open(output_path, "w") as fout:
-        proc = await asyncio.create_subprocess_exec(
-            "agent", "--print",
-            "--model", task["model"],
-            "--mode", "ask",
-            "--force",
-            "--trust",
-            "--workspace", task["project_root"],
-            stdin=fin,
-            stdout=fout,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
-        )
-        _running_procs.append(proc)
-        try:
-            _, stderr_data = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout
+    try:
+        with open(task["review_prompt_path"], "r") as fin, open(raw_path, "w") as fout:
+            proc = await asyncio.create_subprocess_exec(
+                "agent", "--print",
+                "--output-format", "stream-json",
+                "--model", task["model"],
+                "--mode", "ask",
+                "--force",
+                "--trust",
+                "--workspace", task["project_root"],
+                stdin=fin,
+                stdout=fout,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
             )
-        except (asyncio.TimeoutError, asyncio.CancelledError):
-            kill_process_group(proc)
+            _running_procs.append(proc)
             try:
-                await asyncio.wait_for(proc.wait(), timeout=5)
+                _, stderr_data = await asyncio.wait_for(
+                    proc.communicate(), timeout=timeout
+                )
             except (asyncio.TimeoutError, asyncio.CancelledError):
-                pass
-            raise
-        finally:
-            if proc in _running_procs:
-                _running_procs.remove(proc)
+                kill_process_group(proc)
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=5)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    pass
+                raise
+            finally:
+                if proc in _running_procs:
+                    _running_procs.remove(proc)
+    finally:
+        summary, result_event, segments = summarize_events(raw_path, log_path, task, started_ms)
+        telemetry.clear()
+        telemetry.update(summary)
+        raw_path.unlink(missing_ok=True)
 
     duration = time.monotonic() - start
-    try:
-        file_size = output_path.stat().st_size
-    except FileNotFoundError:
-        file_size = 0
-
     if proc.returncode != 0:
         raise RuntimeError(
             f"agent exited with code {proc.returncode}: "
             f"{stderr_data.decode(errors='replace').strip()}"
         )
+    if result_event is None:
+        raise RuntimeError("agent exited without a result event")
+    if result_event.get("is_error") or result_event.get("subtype") != "success":
+        raise RuntimeError(f"agent result was {result_event.get('subtype')!r}")
+    review = review_text(result_event, segments, min_output_bytes)
+    dropped = len(str(result_event.get("result", "")).strip()) - len(review)
+    if dropped > 0:
+        telemetry["narration_dropped_chars"] = dropped
+    output_path.write_text(review + "\n" if review else "")
+    file_size = output_path.stat().st_size
     if file_size < min_output_bytes:
         raise RuntimeError(
             f"agent produced {file_size} bytes of output "
@@ -262,12 +332,12 @@ async def run_single_reviewer(
         "status": "success",
         "file_size": file_size,
         "duration_seconds": round(duration, 1),
+        "telemetry": dict(telemetry),
     }
 
 
 async def run_with_retry(
     task: dict,
-    output_dir: Path,
     settings: dict,
     launch_delay: float,
 ) -> dict:
@@ -276,7 +346,7 @@ async def run_with_retry(
     Cancellation (quorum cut-off) is converted into a cut_off result.
     """
     label = task_label(task)
-    combined_prompt_path = write_combined_prompt(task, output_dir)
+    telemetry: dict = {}
     timeout = settings["timeout_seconds"]
     retry_count = settings["retry_count"]
 
@@ -289,21 +359,24 @@ async def run_with_retry(
         for attempt in range(1 + retry_count):
             try:
                 result = await run_single_reviewer(
-                    task, combined_prompt_path, timeout,
-                    settings["min_output_bytes"],
+                    task, timeout, settings["min_output_bytes"], telemetry,
                 )
                 if attempt > 0:
                     result["status"] = "retry_success"
                     result["retry_reason"] = last_error
                 log(
                     f"{label} {'completed' if attempt == 0 else 'retry succeeded'} "
-                    f"({result['file_size']} bytes, {result['duration_seconds']}s)"
+                    f"({result['file_size']} bytes, {result['duration_seconds']}s, "
+                    f"{telemetry.get('tool_calls', 0)} tool calls)"
                 )
                 return result
 
             except asyncio.TimeoutError:
                 last_error = f"Timeout after {timeout}s"
-                log(f"{label} timed out ({timeout}s) - FAILED (timeouts are not retried)")
+                log(
+                    f"{label} timed out ({timeout}s) after {telemetry.get('tool_calls', 0)} "
+                    f"tool calls, last: {telemetry.get('last_tool')} - FAILED (timeouts are not retried)"
+                )
                 break
 
             except RuntimeError as e:
@@ -314,20 +387,20 @@ async def run_with_retry(
                 else:
                     log(f"{label} failed - {last_error}")
 
-        write_failure_note(task, "Review failed", last_error)
-        return failure_result(task, "failed", last_error)
+        write_failure_note(task, "Review failed", last_error, telemetry)
+        return failure_result(task, "failed", last_error, telemetry)
 
     except asyncio.CancelledError:
         error = (
             f"Cut off {settings['quorum_grace_seconds']}s after external "
             "quorum was reached"
         )
-        log(f"{label} cut off - quorum reached and grace period expired")
-        write_failure_note(task, "Review cut off", error)
-        return failure_result(task, "cut_off", error)
-
-    finally:
-        cleanup_prompt_file(combined_prompt_path)
+        log(
+            f"{label} cut off - quorum reached and grace period expired "
+            f"({telemetry.get('tool_calls', 0)} tool calls, last: {telemetry.get('last_tool')})"
+        )
+        write_failure_note(task, "Review cut off", error, telemetry)
+        return failure_result(task, "cut_off", error, telemetry)
 
 
 def read_settings(config: dict) -> dict:
@@ -361,8 +434,7 @@ async def run_all(config: dict) -> dict:
 
     running = {
         asyncio.ensure_future(run_with_retry(
-            task, Path(task["output_path"]).parent, settings,
-            index * settings["launch_stagger_seconds"],
+            task, settings, index * settings["launch_stagger_seconds"],
         )): index
         for index, task in enumerate(tasks)
     }
@@ -426,7 +498,7 @@ def install_signal_handlers(loop: asyncio.AbstractEventLoop) -> None:
     """Install handlers to kill child processes on SIGTERM/SIGINT.
 
     Uses loop.stop() instead of sys.exit() so that coroutine finally
-    blocks execute (cleaning up temp files and file descriptors).
+    blocks execute (cleaning up raw event files and file descriptors).
     """
     global _signal_received
 

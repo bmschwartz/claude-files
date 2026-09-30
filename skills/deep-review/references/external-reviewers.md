@@ -16,12 +16,14 @@ Detect host: Cursor when `CURSOR_CONVERSATION_ID` is set or the Task tool is ava
 - `--no-external`: internal Explore reviewers only
 - `--agent-cli`: force agent CLI backend even on Cursor
 - `--models <m1,m2,...>`: override default model list
-- `--count <N>`: instances per model (default 2)
+- `--count <N>`: instances per model (default 1)
 
 **Default models** (valid for both Task `model` and `agent --model`):
-`composer-2.5`, `gpt-5.6-terra-high`, `gemini-3.7-flash-high`
+`composer-2.5`, `gpt-5.6-terra-high`, `gemini-3.8-flash-high`, `grok-4.7-high`
 
-`cursor-grok-4.6-high` is no longer a default (no unique CRITICAL/IMPORTANT findings in the review history; frequent straggler). Add it with `--models` if wanted.
+`grok-4.7-high` replaces `cursor-grok-4.6-high`, which was dropped for having no unique CRITICAL/IMPORTANT findings in the review history and frequent stragglers.
+
+Each model's prompt is rendered from its profile in [model-profiles/](model-profiles/README.md). A model without a profile runs on the shared baseline prompt, and `prepare_round.py` reports a `profile_warnings` entry for it.
 
 ---
 
@@ -34,9 +36,10 @@ Detect host: Cursor when `CURSOR_CONVERSATION_ID` is set or the Task tool is ava
 | `model` | slug from `--models` or defaults |
 | `instance` | 1..N |
 | `output_path` | `<ROUND_DIR>/review-<MODEL>-<instance>.md` |
-| `review_prompt_path` | `<ROUND_DIR>/_review-prompt.md` |
-| `input_path` | `_diff.patch` (code) or plan version directory (plan/spec) |
-| `input_type` | `diff` or `plan_dir` |
+| `profile` | profile key: the slug without `-fast` and its effort suffix |
+| `review_prompt_path` | `<ROUND_DIR>/_review-prompt-<profile>.md`, the complete prompt for this model (input path and excluded directories included) |
+| `input_path` | `_diff.patch` (code) or plan version directory (plan/spec); informational |
+| `input_type` | `diff` or `plan_dir`; informational |
 | `project_root` | `PROJECT_ROOT` (not `GIT_ROOT`) |
 | `exclude_dirs` | `EXCLUDE_DIRS` |
 
@@ -46,7 +49,7 @@ Detect host: Cursor when `CURSOR_CONVERSATION_ID` is set or the Task tool is ava
 
 ## Cursor: Task subagents (preferred)
 
-Same parallel pattern as `/multi-model-review`, but with **`_review-prompt.md`** and **file outputs** for the synthesizer.
+Same parallel pattern as `/multi-model-review`, but with each model's **`_review-prompt-<profile>.md`** and **file outputs** for the synthesizer.
 
 ### Launch rules
 
@@ -60,32 +63,11 @@ Same parallel pattern as `/multi-model-review`, but with **`_review-prompt.md`**
 
 ### Subagent prompt template
 
-Include in every external reviewer Task prompt:
+The task's `review_prompt_path` already holds the complete, model-specific prompt, so the Task prompt only points at it:
 
 ```markdown
-You are an external code/plan reviewer for a multi-model review pipeline.
-
-## Workspace
-- Root: {PROJECT_ROOT}
-- Read and follow: {review_prompt_path}
-<If input_type is diff>
-- Diff file: {input_path} — read this first
-</If>
-<If input_type is plan_dir>
-- Plan documents directory: {input_path}
-</If>
-<If EXCLUDE_DIRS non-empty>
-- Do NOT explore: {EXCLUDE_DIRS joined}
-</If>
-
-## Rules
-- Read the full prompt file at {review_prompt_path} and follow its severity rubric and output format.
-- Use Read/Grep/Glob to inspect the codebase under {PROJECT_ROOT} for context.
-- Do NOT write files. Return your complete review as your final message.
-- Reviewer identity for synthesis: {model} instance {instance}
+Read {review_prompt_path} and carry out the review it describes, working read-only in {PROJECT_ROOT}. Return the complete review as your final message.
 ```
-
-For **plan/spec** type, add: "Read all markdown files in the plan directory."
 
 ### Capture output
 
@@ -140,7 +122,9 @@ Run in the background with the Bash tool's `run_in_background: true`:
 python3 "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/deep-review}/scripts/run_reviewers.py" < "<ROUND_DIR>/_reviewers-config.json" > "<ROUND_DIR>/_external-results.json" 2> "<ROUND_DIR>/_external-progress.log"
 ```
 
-`_external-results.json` holds `{status, total, succeeded, failed, results}`. Each result: `status` (`success` | `retry_success` | `failed` | `cut_off`), `output_path`, `file_size`, `duration_seconds`, optional `error`. Failed and cut-off reviewers get a short `# Review failed` / `# Review cut off` note in their output file. Tasks are identified by `output_path`, which must be unique; `(model, instance)` may repeat (e.g. one reviewer answering two rebuttals).
+`run_reviewers.py` sends `review_prompt_path` to `agent --print --output-format stream-json` as-is; it adds no preamble. The review file gets the text the model wrote after its last tool call. Some models (Grok 4.7 in testing) narrate between tool calls despite the prompt, and the `result` event joins all of it together; if that last block is shorter than `min_output_bytes`, the runner uses the longest block, then the joined `result`. Each reviewer's tool calls go to `<ROUND_DIR>/_log-<output stem>.jsonl`, one line per call: `t` (seconds from launch), `secs` (duration; `null` if still running when stopped), `tool`, `target` (path, pattern or command). The raw event stream is written to a temp file outside the workspace, so other reviewers can't read it, and deleted afterwards, since each file read carries the file's full contents.
+
+`_external-results.json` holds `{status, total, succeeded, failed, results}`. Each result: `status` (`success` | `retry_success` | `failed` | `cut_off`), `output_path`, `file_size`, `duration_seconds`, optional `error`, and `telemetry`: `reported_model` (the CLI's display name), `tool_calls`, `tools` (count per tool), `last_tool`, `log_path`, and on completion `api_duration_seconds`, `usage` (tokens) and, when narration was dropped, `narration_dropped_chars`. Failed and cut-off reviewers get a short `# Review failed` / `# Review cut off` note in their output file, including their tool-call count and last tool call. Tasks are identified by `output_path`, which must be unique; `(model, instance)` may repeat (e.g. one reviewer answering two rebuttals).
 
 Requires `agent` on PATH (`which agent`). Every agent process runs in its own process group, which is killed on timeout, cut-off or SIGTERM/SIGINT.
 

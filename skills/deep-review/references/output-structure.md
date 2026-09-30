@@ -19,19 +19,23 @@ PROJECT_ROOT/.claude/reviews/
 │   │   ├── review-claude-code-1.md                   # Built-in Claude reviewer
 │   │   └── REVIEW_SUMMARY.md                         # Synthesized summary + verdict
 │   ├── 20260212-150000-staged/                       # With --external --count 2
-│   │   ├── _review-prompt.md                         # Prompt for all reviewers
+│   │   ├── _review-prompt-opus.md                    # One prompt per reviewer model
+│   │   ├── _review-prompt-composer-2.5.md
+│   │   ├── _review-prompt-gpt-5.6-terra.md
+│   │   ├── _review-prompt-gemini-3.8-flash.md
 │   │   ├── _diff.patch
 │   │   ├── _reviewers-config.json                    # run_reviewers.py config
-│   │   ├── _external-results.json                    # run_reviewers.py stdout
+│   │   ├── _external-results.json                    # run_reviewers.py stdout (with telemetry)
 │   │   ├── _external-progress.log                    # run_reviewers.py stderr
+│   │   ├── _log-review-composer-2.5-1.jsonl ...      # Tool-call log per external reviewer
 │   │   ├── review-claude-code-1.md
 │   │   ├── review-claude-code-2.md
 │   │   ├── review-composer-2.5-1.md
 │   │   ├── review-composer-2.5-2.md
 │   │   ├── review-gpt-5.6-terra-high-1.md
 │   │   ├── review-gpt-5.6-terra-high-2.md
-│   │   ├── review-gemini-3.7-flash-high-1.md
-│   │   ├── review-gemini-3.7-flash-high-2.md
+│   │   ├── review-gemini-3.8-flash-high-1.md
+│   │   ├── review-gemini-3.8-flash-high-2.md
 │   │   ├── REVIEW_SUMMARY.md
 │   │   ├── rebuttal-composer-2.5-1-C1.md             # Deliberation (if triggered)
 │   │   └── rebuttal-response-composer-2.5-1-C1.md
@@ -51,10 +55,11 @@ PROJECT_ROOT/.claude/reviews/
 │   └── <plan-timestamp>/
 └── reviews/
     └── <round-timestamp>/
-        ├── _review-prompt.md
+        ├── _review-prompt-opus.md
+        ├── _review-prompt-gemini-3.8-flash.md
         ├── review-opus-internal-1.md
         ├── review-opus-internal-2.md
-        ├── review-gemini-3.7-flash-high-1.md
+        ├── review-gemini-3.8-flash-high-1.md
         └── REVIEW_SUMMARY.md
 ```
 
@@ -83,10 +88,11 @@ PROJECT_ROOT/.claude/reviews/
 | File | Purpose | Created by |
 |------|---------|------------|
 | `REVIEW.md` | Links to most recent review round | Phase 5 |
-| `_review-prompt.md` | Prompt read by every reviewer (audit trail) | `prepare_round.py` (Phase 2) |
+| `_review-prompt-<key>.md` | Prompt for one reviewer model, rendered from its profile (audit trail of what each model received) | `prepare_round.py` (Phase 2) |
 | `_diff.patch` | The diff that was reviewed (audit trail, code type) | `prepare_round.py` (Phase 2) |
 | `_reviewers-config.json` | External reviewer tasks and runner settings | `prepare_round.py` (Phase 2) |
-| `_external-results.json` / `_external-progress.log` | Runner result JSON / progress log | `run_reviewers.py` (Phase 3) |
+| `_external-results.json` / `_external-progress.log` | Runner result JSON (with per-reviewer telemetry) / progress log | `run_reviewers.py` (Phase 3) |
+| `_log-<output stem>.jsonl` | One line per tool call of an external reviewer or rebuttal: time, duration, tool, target | `run_reviewers.py` |
 | `review-claude-code-<N>.md` | Review from internal Claude reviewer (code) | `deep-reviewer` agent |
 | `review-opus-internal-<N>.md` | Review from internal reviewer (plan/spec) | `deep-reviewer` agent |
 | `review-<MODEL>-<N>.md` | Review from external model (immutable) | Task subagent (Cursor) or `run_reviewers.py` (Claude Code / `--agent-cli`) |

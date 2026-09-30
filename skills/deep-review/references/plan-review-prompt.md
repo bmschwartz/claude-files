@@ -1,75 +1,77 @@
 # Plan Review Prompt Template
 
-> `scripts/prepare_round.py` fills this template to produce `_review-prompt.md`. Only the fenced block is used. Do not hand-write the prompt.
+> `scripts/prepare_round.py` renders one `_review-prompt-<key>.md` per reviewer model from the ```` ```section ```` blocks below, exactly as for [code-review-prompt.md](code-review-prompt.md). The section ids match that template, so one model profile serves both; `dimensions`, `severities` and the per-dimension fields in `output` stay word-for-word the same for every model.
 >
-> `{{CONTEXT_SECTIONS}}` is generated, in this order, omitting any that are empty: `## Workspace Scope` (subdirectory invocation), `## Excluded Directories`, `## Change Context` (`--context-stdin`), `## Known Project Learnings` (matched against file paths referenced in the plan documents, per [learning-injection.md](learning-injection.md)).
+> `{{INPUT_PATH}}` is the plan version directory (or single plan/spec file). `{{READ_BUDGET}}` and `{{DELIVERY}}` are filled as for code reviews. `{{CONTEXT_SECTIONS}}` is generated, in this order, omitting any that are empty: `## Workspace Scope` (subdirectory invocation), `## Excluded Directories`, `## Other Reviews` (always; the reviews folder to stay out of), `## Change Context` (`--context-stdin`), `## Known Project Learnings` (matched against file paths referenced in the plan documents, per [learning-injection.md](learning-injection.md)).
 
+```section task
+## Your task
+
+Review the implementation plan at `{{INPUT_PATH}}` before it is built, and report what would make the implementation fail or need rework. A synthesizer, not a person, reads your review: it merges independent reviews of this plan from several model families and weighs each point by its evidence and by whether other reviewers raised it too. A point is useful when another engineer can check it against the plan and the code.
+
+Read every plan document before you start. They follow these conventions, though not all may be present; evaluate what exists:
+- SPEC.md: full specification (requirements, implementation phases, iteration log)
+- README.md: navigation guide (document index, quick start, code reference pattern)
+- KEY_DECISIONS.md: design decisions, trade-offs and rationale
+- CHECKLIST.md: tasks organized by phase
+- PR_STRATEGY.md: dependency graph, PR sequence, branch names
+- FIXTURES.md: test ground truth (pytest fixtures, sample data, assertions)
+
+If the workspace root has a CLAUDE.md, it holds the project's conventions; evaluate the plan's compliance with them. This is a read-only review: report, and leave changes to the plan's author.
 ```
-Review the implementation plan documents in this workspace. Read every file thoroughly before beginning your analysis.
 
+```section context
 {{CONTEXT_SECTIONS}}
+```
 
-If a CLAUDE.md file exists in the workspace root, read it first for project-specific conventions and guidelines. Evaluate the plan's compliance with these conventions.
+```section dimensions
+## Check the plan against the code
 
-The plan documents follow these conventions:
-- SPEC.md — Full specification: requirements, implementation phases, iteration log
-- README.md — Navigation guide: document index, quick start, code reference pattern
-- KEY_DECISIONS.md — Quick reference: design decisions, trade-offs, rationale
-- CHECKLIST.md — Progress tracking: extracted tasks organized by phase
-- PR_STRATEGY.md — PR planning: dependency graph, PR sequence, branch names
-- FIXTURES.md — Test ground truth: pytest fixtures, sample data, assertions
+Plans most often go wrong in what they assume about the existing code, so check each claim in the codebase rather than taking the plan's word for it:
+- **File paths and line numbers**: open each referenced file and confirm the cited lines say what the plan describes.
+- **Function signatures and APIs**: confirm referenced functions, classes and methods exist with the assumed signatures.
+- **Patterns and conventions**: read the actual code to confirm claims about architecture, naming and module organization.
+- **Import paths**: confirm proposed imports point at real modules, and that "single call site" claims hold.
+- **Test patterns**: confirm proposed tests fit the existing test infrastructure (fixtures, mocking, async handling, naming).
 
-Not all documents may be present. Evaluate what exists.
+## What to evaluate
 
-## Codebase Verification (CRITICAL)
+1. **Completeness**: missing steps, unhandled edge cases, gaps in the flow; input combinations, boundary cases and downstream effects.
+2. **Correctness**: logical errors, wrong assumptions, API misuse; control flow, short-circuit paths and dead code.
+3. **Architecture**: soundness, better patterns, consistency with codebase conventions, module boundaries, single responsibility.
+4. **TDD structure**: if the plan uses TDD, whether tests are specific enough to fail meaningfully, test behavior rather than implementation, cover enough, and are clearly described.
+5. **Dependencies and ordering**: whether tasks are sequenced correctly and external dependencies are identified.
+6. **Risk**: the riskiest parts, blockers, regression risk, and prompt/LLM behavior risk where relevant.
+7. **LLM prompt effectiveness** (when the plan changes LLM prompts): whether the new wording will reliably produce the intended behavior, conflicting instructions, whether every location is covered, and how it is tested.
+8. **Scalability and performance**: whether it holds up under load, and obvious bottlenecks.
+```
 
-You have access to the actual project codebase. **Actively verify every claim the plan makes about the codebase.** Do not take the plan's word for it. Specifically:
+```section severities
+## Severity
 
-- **File paths & line numbers:** Open each referenced file and verify the code at cited lines matches what the plan describes.
-- **Function signatures & APIs:** Verify referenced functions, classes, and methods exist with assumed signatures.
-- **Existing patterns & conventions:** Read actual code to confirm claims about architecture, naming, module organization.
-- **Import paths:** Verify proposed imports reference correct module paths and "single call site" assertions are true.
-- **Test patterns:** Verify proposed test approaches match existing infrastructure (fixtures, mocking, async handling, naming).
+- **CRITICAL**: bugs, logic errors, security issues, or missing steps that would make the implementation fail
+- **IMPORTANT**: architectural concerns, significant gaps, or issues that would cause rework later
+- **MINOR**: style improvements, nice-to-haves, low-impact optimizations
+- **POTENTIAL**: a concern you could not confirm against the plan or the code; it is listed separately for a human to judge
 
-## Evaluation Dimensions
+Use CRITICAL, IMPORTANT and MINOR for concerns the plan or the code confirms. When you suspect a problem you could not confirm, report it as POTENTIAL rather than giving it a higher severity.
+```
 
-### 1. Completeness
-Missing steps, unhandled edge cases, gaps in flow? Pay attention to input combination coverage, boundary edge cases, and downstream effects.
+```section exploration
+## When to stop exploring
 
-### 2. Correctness
-Logical errors, wrong assumptions, misuse of APIs? Pay attention to control flow verification, short-circuit paths, and dead code.
+Stop exploring once every claim the plan makes about existing code has been checked and every dimension above has been assessed. Then write the review. Read a file before making a claim about it, and run independent reads and searches in parallel. {{READ_BUDGET}}
+```
 
-### 3. Architecture
-Sound design? Better patterns available? Consistent with codebase conventions? Check pattern consistency, module boundaries, single responsibility.
+```section output
+## Output
 
-### 4. TDD Structure
-If plan uses TDD: Are tests specific enough to fail meaningfully? Do they validate behavior vs implementation? Sufficient coverage? Clear descriptions?
-
-### 5. Dependencies & Ordering
-Tasks sequenced correctly? External dependencies identified?
-
-### 6. Risk
-Riskiest parts? Blockers? Regression risk and prompt/LLM behavior risk if applicable.
-
-### 7. LLM Prompt Effectiveness (when applicable)
-If plan modifies LLM prompts: Will new language reliably produce intended behavior? Conflicting instructions? All locations covered? Tested?
-
-### 8. Scalability & Performance
-Will this hold up under load? Obvious bottlenecks?
-
-## Severity Definitions
-
-- **CRITICAL**: Bugs, logic errors, security issues, or missing steps that would cause implementation to fail
-- **IMPORTANT**: Architectural concerns, significant gaps, or issues that would cause rework later
-- **MINOR**: Style improvements, nice-to-haves, or low-impact optimizations
-- **POTENTIAL**: Low-confidence concerns — flagged for human judgment
-
-## Output Format
-
-For each dimension:
-- Severity-tagged rating: CRITICAL / IMPORTANT / MINOR / POTENTIAL / GOOD
-- Cite specific files and sections from the plan AND the codebase
+For each dimension give:
+- A rating: CRITICAL / IMPORTANT / MINOR / POTENTIAL / GOOD
+- The specific plan files and sections, and the codebase files, that support it
 - Concrete, actionable suggestions with implementation detail
 
-Finish with a **Prioritized Recommendations** section: numbered list ordered by impact, tagged with severity.
+Give every concern in full and keep everything else short: no introduction and no restated summary. End with **Prioritized Recommendations**: a numbered list ordered by impact, each tagged with its severity.
+
+{{DELIVERY}}
 ```

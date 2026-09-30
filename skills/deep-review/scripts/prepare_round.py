@@ -3,15 +3,17 @@
 
 Computes workspace scoping, creates the round directory, captures the
 diff, matches and injects project learnings (with the staleness check),
-fills the review prompt template, and writes the external reviewer
-config for run_reviewers.py. Prints a JSON report to stdout.
+renders one review prompt per reviewer model from the shared template
+sections and that model's profile (references/model-profiles/), and
+writes the external reviewer config for run_reviewers.py. Prints a JSON
+report to stdout.
 
 Stdlib only — no pip dependencies.
 
 Usage (code):
     prepare_round.py --type code --diff-args "master...HEAD" --scope-suffix vs-master \
         [--spec-file PATH ...] [--patterns-file PATH] [--context-stdin] \
-        [--models a,b] [--count 2] [--no-external] [--dry-run]
+        [--models a,b] [--count 1] [--no-external] [--dry-run]
 
 Usage (plan/spec):
     prepare_round.py --type plan --plan-input PATH [--plan-root PATH] [...]
@@ -27,8 +29,23 @@ import time
 from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_MODELS = ["composer-2.5", "gpt-5.6-terra-high", "gemini-3.7-flash-high"]
-DEFAULT_COUNT = 2
+DEFAULT_MODELS = ["composer-2.5", "gpt-5.6-terra-high", "gemini-3.8-flash-high", "grok-4.7-high"]
+DEFAULT_COUNT = 1
+INTERNAL_MODEL = "opus"
+PROFILES_DIR = SKILL_DIR / "references" / "model-profiles"
+EFFORT_SUFFIX = re.compile(r"-(?:none|minimal|low|medium|high|xhigh|extra-high|max)$")
+# Advisory exploration budget (file reads and searches beyond the input),
+# by diff size. A profile's budget_scale multiplies it; "budget: none" drops it.
+BUDGET_TIERS = [(600, 40), (1400, 30), (None, 20)]
+PLAN_BUDGET = 40
+DELIVERY = {
+    "internal": "Write the complete review to the output path you were given.",
+    "external": (
+        "Everything you write outside tool calls is saved verbatim as the review file, so "
+        "write only the review: no plan or narration of your steps, and no opening or "
+        "closing remarks."
+    ),
+}
 LEARNINGS_CAP = 10
 STALENESS_LIMIT = 3
 LARGE_DIFF_LINES = 3000
@@ -150,6 +167,8 @@ def parse_scalar(raw: str):
         return raw[1:-1]
     if re.fullmatch(r"-?\d+", raw):
         return int(raw)
+    if re.fullmatch(r"-?\d+\.\d+", raw):
+        return float(raw)
     return raw
 
 
@@ -273,12 +292,109 @@ def project_convention_files(project_root: Path, git_root: Path) -> list[Path]:
     return []
 
 
-def load_template(name: str) -> str:
+def load_sections(name: str) -> dict[str, str]:
+    """Read the ```section <id>``` blocks of a prompt template, in file order."""
     text = (SKILL_DIR / "references" / name).read_text()
-    match = re.search(r"^```\n(.*)\n```\s*$", text, re.S | re.M)
-    if not match:
-        raise PrepareError(f"No fenced template block in references/{name}")
-    return match.group(1)
+    sections = {
+        m.group(1): m.group(2).strip()
+        for m in re.finditer(r"^```section ([a-z_]+)\n(.*?)\n```\s*$", text, re.S | re.M)
+    }
+    if not sections:
+        raise PrepareError(f"No ```section blocks in references/{name}")
+    return sections
+
+
+def profile_key(model: str) -> str:
+    """Profile key for a model slug: drop the -fast tier and the effort suffix."""
+    return EFFORT_SUFFIX.sub("", re.sub(r"-fast$", "", model))
+
+
+def load_profile(key: str, section_ids: list[str]) -> tuple[dict | None, str | None]:
+    """Load references/model-profiles/<key>.md. Returns (profile, warning)."""
+    path = PROFILES_DIR / f"{key}.md"
+    if not path.is_file():
+        return None, (
+            f"NO PROMPT PROFILE for `{key}`: its reviewers got the shared baseline prompt. "
+            f"Add references/model-profiles/{key}.md (see the README there)."
+        )
+    parsed = parse_frontmatter(path.read_text())
+    if parsed is None:
+        return None, f"PROMPT PROFILE `{key}` has no frontmatter: using the shared baseline prompt."
+    fields, body = parsed
+    order = fields.get("order") or section_ids
+    if isinstance(order, str):
+        order = [order]
+    if sorted(order) != sorted(section_ids):
+        return None, (
+            f"PROMPT PROFILE `{key}` has an invalid order {order} (sections are "
+            f"{section_ids}): using the shared baseline prompt."
+        )
+    inserts: dict[tuple[str, str], str] = {}
+    headings = list(re.finditer(r"^## (.+?)\s*$", body, re.M))
+    for i, heading in enumerate(headings):
+        match = re.fullmatch(r"(before|after) ([a-z_]+)", heading.group(1))
+        if not match:
+            continue  # any other heading is documentation, not prompt text
+        if match.group(2) not in section_ids:
+            return None, (
+                f"PROMPT PROFILE `{key}` inserts {heading.group(1)!r}, but there is no "
+                f"`{match.group(2)}` section: using the shared baseline prompt."
+            )
+        end = headings[i + 1].start() if i + 1 < len(headings) else len(body)
+        inserts[(match.group(1), match.group(2))] = body[heading.end():end].strip()
+    budget = fields.get("budget")
+    try:
+        scale = float(fields.get("budget_scale", 1))
+    except (TypeError, ValueError):
+        return None, (
+            f"PROMPT PROFILE `{key}` has a non-numeric budget_scale: using the shared "
+            "baseline prompt."
+        )
+    return {
+        "key": key,
+        "path": str(path),
+        "verified_against": fields.get("verified_against"),
+        "order": order,
+        "style": fields.get("style", "markdown"),
+        "budget_scale": None if budget == "none" else scale,
+        "inserts": inserts,
+    }, None
+
+
+def read_budget(diff_lines: int | None, scale: float | None) -> str:
+    if scale is None:
+        return ""
+    if diff_lines is None:
+        base = PLAN_BUDGET
+    else:
+        base = next(n for limit, n in BUDGET_TIERS if limit is None or diff_lines <= limit)
+    return (
+        f"For this input, plan on roughly {max(5, round(base * scale))} file reads and "
+        f"searches beyond the input itself. Reviews that run past "
+        f"{REVIEWER_SETTINGS['timeout_seconds'] // 60} minutes are discarded, so if you reach "
+        "that number, write the review with what you have and report anything you could not "
+        "confirm as POTENTIAL."
+    )
+
+
+def render_prompt(sections: dict[str, str], profile: dict | None, values: dict[str, str]) -> str:
+    order = profile["order"] if profile else list(sections)
+    inserts = profile["inserts"] if profile else {}
+    style = profile["style"] if profile else "markdown"
+    parts: list[str] = []
+    for section_id in order:
+        body = sections[section_id]
+        for name, value in values.items():
+            body = body.replace("{{" + name + "}}", value)
+        body = body.strip()
+        if inserts.get(("before", section_id)):
+            parts.append(inserts[("before", section_id)])
+        if body:
+            parts.append(f"<{section_id}>\n{body}\n</{section_id}>" if style == "xml" else body)
+        if inserts.get(("after", section_id)):
+            parts.append(inserts[("after", section_id)])
+    prompt = "\n\n".join(parts)
+    return re.sub(r"\n{3,}", "\n\n", prompt).strip() + "\n"
 
 
 def plan_referenced_paths(plan_input: Path) -> list[str]:
@@ -290,24 +406,28 @@ def plan_referenced_paths(plan_input: Path) -> list[str]:
     return sorted(paths)
 
 
-def reviewer_tasks(args, round_dir: Path, prompt_path: Path, input_path: Path,
-                   project_root: Path, exclude_dirs: list[str]) -> list[dict]:
+def external_models(args) -> list[str]:
     if args.no_external:
         return []
-    models = [m.strip() for m in args.models.split(",") if m.strip()] if args.models else DEFAULT_MODELS
+    return [m.strip() for m in args.models.split(",") if m.strip()] if args.models else DEFAULT_MODELS
+
+
+def reviewer_tasks(args, round_dir: Path, prompt_paths: dict[str, Path], input_path: Path,
+                   project_root: Path, exclude_dirs: list[str]) -> list[dict]:
     return [
         {
             "model": model,
             "instance": instance,
             "type": args.type,
+            "profile": profile_key(model),
             "project_root": str(project_root),
-            "review_prompt_path": str(prompt_path),
+            "review_prompt_path": str(prompt_paths[profile_key(model)]),
             "output_path": str(round_dir / f"review-{re.sub(r'[/ ]', '-', model)}-{instance}.md"),
             "input_path": str(input_path),
             "input_type": "diff" if args.type == "code" else "plan_dir",
             "exclude_dirs": exclude_dirs,
         }
-        for model in models
+        for model in external_models(args)
         for instance in range(1, args.count + 1)
     ]
 
@@ -342,9 +462,10 @@ def prepare(args) -> dict:
     if exclude_dirs:
         joined = ", ".join(f"`{d}`" for d in exclude_dirs)
         sections.append(
-            f"## Excluded Directories\nDo not explore or read files in: {joined}. They contain "
-            "unrelated code from other branches and will produce misleading context."
+            f"## Excluded Directories\nStay out of {joined}: those directories hold code from "
+            "other branches and would give you misleading context."
         )
+    scope_sections = len(sections)
     if args.context_stdin:
         context = sys.stdin.read().strip()
         if context:
@@ -363,7 +484,7 @@ def prepare(args) -> dict:
             line for line in git(["diff", "--name-only", *diff_args], project_root).splitlines()
             if line
         ]
-        diff_lines = diff_text.count("\n")
+        diff_lines: int | None = diff_text.count("\n")
         round_dir = (
             project_root / ".claude" / "reviews" / sanitize_branch(branch)
             / f"{timestamp}-{args.scope_suffix}"
@@ -393,7 +514,7 @@ def prepare(args) -> dict:
             sections.append(f"## Feature Specification Context\n{spec_text}")
         report["spec_files"] = args.spec_file or []
         target_paths = changed
-        template = load_template("code-review-prompt.md")
+        template = load_sections("code-review-prompt.md")
         learnings_kind = "code"
         internal_source = args.internal_source or "claude-code"
     else:
@@ -410,9 +531,21 @@ def prepare(args) -> dict:
                 / f"{timestamp}-{args.type}"
             )
         target_paths = plan_referenced_paths(input_path)
-        template = load_template("plan-review-prompt.md")
+        diff_lines = None
+        template = load_sections("plan-review-prompt.md")
         learnings_kind = "plan"
         internal_source = args.internal_source or "opus-internal"
+
+    reviews_root = round_dir.parent if args.type != "code" and args.plan_root else round_dir.parent.parent
+    try:
+        reviews_label = reviews_root.relative_to(project_root).as_posix()
+    except ValueError:
+        reviews_label = str(reviews_root)
+    sections.insert(scope_sections, (
+        f"## Other Reviews\nApart from the input named in your task, stay out of `{reviews_label}`: "
+        "it holds this and earlier review rounds, including other reviewers' output. Your review "
+        "has to be independent of theirs for the cross-model comparison to mean anything."
+    ))
 
     all_files = repository_files(git_root)
     learnings = match_learnings(
@@ -424,19 +557,42 @@ def prepare(args) -> dict:
         sections.append(section)
     report["learnings"] = learnings
 
-    prompt = template.replace("{{DIFF_PATH}}", str(input_path)).replace(
-        "{{CONTEXT_SECTIONS}}", "\n\n".join(sections)
-    )
-    prompt = re.sub(r"\n{3,}", "\n\n", prompt).strip() + "\n"
-    prompt_path = round_dir / "_review-prompt.md"
-    tasks = reviewer_tasks(args, round_dir, prompt_path, input_path, project_root, exclude_dirs)
+    section_ids = list(template)
+    context = "\n\n".join(sections)
+    reviewer_keys = {INTERNAL_MODEL: "internal"}
+    for model in external_models(args):
+        reviewer_keys.setdefault(profile_key(model), "external")
+    prompts: dict[str, str] = {}
+    prompt_paths: dict[str, Path] = {}
+    profile_warnings: list[str] = []
+    internal_profile = None
+    for key, kind in reviewer_keys.items():
+        profile, warning = load_profile(key, section_ids)
+        if warning:
+            profile_warnings.append(warning)
+        if kind == "internal":
+            internal_profile = {
+                "key": key,
+                "verified_against": profile["verified_against"] if profile else None,
+            }
+        prompts[key] = render_prompt(template, profile, {
+            "INPUT_PATH": str(input_path),
+            "CONTEXT_SECTIONS": context,
+            "READ_BUDGET": read_budget(diff_lines, profile["budget_scale"] if profile else 1.0),
+            "DELIVERY": DELIVERY[kind],
+        })
+        prompt_paths[key] = round_dir / f"_review-prompt-{key}.md"
+    tasks = reviewer_tasks(args, round_dir, prompt_paths, input_path, project_root, exclude_dirs)
     config_path = round_dir / "_reviewers-config.json"
 
     report.update({
         "round_dir": str(round_dir),
         "input_path": str(input_path),
-        "prompt_path": str(prompt_path),
-        "prompt_bytes": len(prompt.encode()),
+        "internal_prompt_path": str(prompt_paths[INTERNAL_MODEL]),
+        "internal_profile": internal_profile,
+        "prompt_paths": {key: str(path) for key, path in prompt_paths.items()},
+        "prompt_bytes": {key: len(text.encode()) for key, text in prompts.items()},
+        "profile_warnings": profile_warnings,
         "internal_outputs": [
             str(round_dir / f"review-{internal_source}-{i}.md") for i in range(1, args.count + 1)
         ],
@@ -448,7 +604,8 @@ def prepare(args) -> dict:
         round_dir.mkdir(parents=True, exist_ok=False)
         if args.type == "code":
             input_path.write_text(diff_text)
-        prompt_path.write_text(prompt)
+        for key, text in prompts.items():
+            prompt_paths[key].write_text(text)
         if tasks:
             config_path.write_text(json.dumps({**REVIEWER_SETTINGS, "tasks": tasks}, indent=2))
     return report

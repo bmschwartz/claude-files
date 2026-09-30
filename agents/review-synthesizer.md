@@ -20,6 +20,7 @@ When invoked you will receive:
 - For `plan`/`spec` type: a **plan version directory path** containing the plan documents
 - Optional: a **focus filter** (code type only) — e.g., `security`, `performance`, `tests`
 - Optional: a **prior REVIEW_SUMMARY.md path** (plan/spec type, for previously-addressed filtering; also used in re-synthesis mode)
+- Optional: **prompt profile warnings**: reviewers that ran on the shared baseline prompt because their model had no profile, or whose model differs from the one their profile was tuned for. Show each one verbatim at the top of the summary (see the formats below), so it is seen before the findings.
 
 ### Invocation interface
 
@@ -80,30 +81,27 @@ In this mode, read the prior Conflicts section to understand what was disputed, 
 
    For each conflict found, record: the location, Side A (reviewer + position + rationale), Side B (reviewer + position + rationale), which reviewer to re-engage (the one with weaker rationale or less evidence), a specific question to resolve the disagreement, and whether the question is **code-checkable** — a factual question answerable by reading at most ~3 files or running one search (e.g. "is `x` ever `None` at this call site?"), as opposed to a judgment call.
 
-   Then write one rebuttal prompt per conflict to `<ROUND_DIR>/rebuttal-<REVIEWER>-C<N>.md`, where `<REVIEWER>` is the re-engaged reviewer's file label (e.g. `claude-code-1`, `gemini-3.7-flash-high-2`):
+   Then write one rebuttal prompt per conflict to `<ROUND_DIR>/rebuttal-<REVIEWER>-C<N>.md`, where `<REVIEWER>` is the re-engaged reviewer's file label (e.g. `claude-code-1`, `gemini-3.8-flash-high-2`):
 
    ```markdown
    # Rebuttal Request
 
-   ## Context
-   Another reviewer disagrees with your finding. Please respond to the specific question below.
+   Another reviewer reached the opposite conclusion on one of your findings. Answer the question below with evidence from the code or the plan, then stop: this settles one disagreement and is not a re-review.
 
-   ## Your Original Position
+   ## Your original position
    <the re-engaged reviewer's exact finding and rationale>
 
-   ## Opposing Position
+   ## Opposing position
    <the other side's finding and rationale>
 
    ## Question
    <the specific question>
 
-   ## Instructions
-   - Respond to this specific question ONLY
-   - Do NOT perform a full re-review
-   - Reference specific code/plan evidence to support your response
-   - If you concede the point, say so clearly
-   - If you maintain your position, explain what the opposing reviewer missed
+   ## How to answer
+   Start with one word, `conceded` or `maintained`. Then give the evidence that decides the question: `file:line` excerpts or plan sections. If you concede, say what you missed; if you maintain, say what the other reviewer missed. Everything you write is saved as your answer, so write only the answer.
    ```
+
+   Keep the same wording for every reviewer. The rubric the reviewers answered was identical, and the rebuttals stay comparable the same way.
 
 8. Generate the **verdict block** (see Verdict Block section below).
 
@@ -124,6 +122,8 @@ In this mode, read the prior Conflicts section to understand what was disputed, 
 
 ```markdown
 # Code Review Summary
+
+> **Prompt profile warning:** <one blockquote line per warning passed in; omit when there are none>
 
 **Date:** <date>
 **Branch:** <branch name>
@@ -241,6 +241,8 @@ Keep **Current Code** and **Suggested Fix** snippets to the lines that matter (a
 
 ```markdown
 # Plan Review Summary
+
+> **Prompt profile warning:** <one blockquote line per warning passed in; omit when there are none>
 
 **Date:** <date>
 **Models:** <comma-separated list of models used> (×<count> instances each)
