@@ -19,9 +19,9 @@ Detect host: Cursor when `CURSOR_CONVERSATION_ID` is set or the Task tool is ava
 - `--count <N>`: instances per model (default 1)
 
 **Default models** (valid for both Task `model` and `agent --model`):
-`composer-2.5`, `gpt-5.6-terra-high`, `gemini-3.8-flash-high`, `grok-4.7-high`
+`composer-2.5`, `gpt-5.6-terra-high`
 
-`grok-4.7-high` replaces `cursor-grok-4.6-high`, which was dropped for having no unique CRITICAL/IMPORTANT findings in the review history and frequent stragglers.
+`grok-4.7-high` was dropped from the defaults on 2026-09-30 after timing out in all 4 of its runs, as `cursor-grok-4.6-high` was before it. `gemini-3.8-flash-high` was dropped the same day after repeated timeouts and a provider connection error. Pass either with `--models` when wanted.
 
 Each model's prompt is rendered from its profile in [model-profiles/](model-profiles/README.md). A model without a profile runs on the shared baseline prompt, and `prepare_round.py` reports a `profile_warnings` entry for it.
 
@@ -97,7 +97,7 @@ Use when host is Claude Code, or Cursor with `--agent-cli`, or after Task backen
 
 ```json
 {
-  "timeout_seconds": 480,
+  "timeout_seconds": 720,
   "retry_count": 1,
   "retry_delay_seconds": 5,
   "quorum_fraction": 0.75,

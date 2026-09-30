@@ -81,13 +81,17 @@ A unified deep-review skill that orchestrates parallel AI reviewers, synthesizes
 | `--no-learn` | Skip learning extraction (Phase 4.7) entirely |
 | `--auto-learn` | Auto-accept learning candidates without human gate |
 
-**Default external models:** `composer-2.5`, `gpt-5.6-terra-high`, `gemini-3.8-flash-high`, `grok-4.7-high`
+**Default external models:** `composer-2.5`, `gpt-5.6-terra-high`
 
 Each model's prompt comes from its profile in [references/model-profiles/](${CLAUDE_SKILL_DIR}/references/model-profiles/README.md), keyed by the slug without its effort suffix (`gpt-5.6-terra-high` → `gpt-5.6-terra`). When you change a default model or pass a new one with `--models`, add its profile from the vendor's official guidance; until then it runs on the shared baseline and every review shows a warning.
 
-> `grok-4.7-high` replaces `cursor-grok-4.6-high`, which was dropped from the defaults for never being the sole source of a CRITICAL/IMPORTANT finding and for frequent stragglers/timeouts. If 4.7 shows the same pattern, drop it and pass it via `--models` when wanted.
+> `grok-4.7-high` was dropped from the defaults on 2026-09-30, as `cursor-grok-4.6-high` was before it. It timed out in all 4 of its runs without starting a review: twice as `grok-4.7-high-fast`, then as `grok-4.7-high` at 480s after 77 tool calls and at 720s after 106. Its profile stays, so pass it with `--models` when wanted.
 >
-> Successful external reviewers finish in 3–9 minutes. `run_reviewers.py` uses `timeout_seconds: 480`, does not retry timeouts, and once 75% of externals have succeeded gives stragglers 90s before cutting them off (`quorum_fraction` / `quorum_grace_seconds` in `_reviewers-config.json`).
+> `gemini-3.8-flash-high` was dropped from the defaults on 2026-09-30. On 2026-09-29 it kept timing out at 480s, and on 2026-09-30 its first attempt failed with a provider connection error ("We're having trouble connecting to the model provider") and went to a retry while the other reviewers finished. Across every Gemini version run so far (3.5 / 3.7 / 3.8 flash: 22 runs in 15 rounds up to 2026-09-30), only 11 produced a usable review and 10 timed out, and it added the fewest single-reviewer findings per run of any external. Its profile stays, so pass it with `--models` when wanted.
+>
+> With two externals, the 75% quorum needs both to succeed, so the straggler cut-off never fires and a slow external runs to the timeout. The internal reviewers usually take longer anyway.
+>
+> Successful external reviewers finish in 3–9 minutes. `run_reviewers.py` uses `timeout_seconds: 720` (raised from 480 on 2026-09-29, when gpt-5.6-terra and composer-2.5 were finishing within 35s of the limit and gemini and grok kept timing out), does not retry timeouts, and once 75% of externals have succeeded gives stragglers 90s before cutting them off (`quorum_fraction` / `quorum_grace_seconds` in `_reviewers-config.json`).
 
 ---
 
