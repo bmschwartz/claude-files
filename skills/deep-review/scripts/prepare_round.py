@@ -29,7 +29,7 @@ import time
 from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_MODELS = ["composer-2.5", "gpt-5.6-terra-high"]
+DEFAULT_MODELS = ["composer-2.5", "gpt-5.6-sol-high"]
 DEFAULT_COUNT = 1
 INTERNAL_MODEL = "opus"
 PROFILES_DIR = SKILL_DIR / "references" / "model-profiles"
@@ -50,7 +50,7 @@ LEARNINGS_CAP = 10
 STALENESS_LIMIT = 3
 LARGE_DIFF_LINES = 3000
 REVIEWER_SETTINGS = {
-    "timeout_seconds": 720,
+    "timeout_seconds": 900,
     "retry_count": 1,
     "retry_delay_seconds": 5,
     "quorum_fraction": 0.75,

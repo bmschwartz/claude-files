@@ -11,6 +11,7 @@ The key is the model slug with the `-fast` tier and the effort suffix (`-none`, 
 | Slug | Key |
 |------|-----|
 | `gpt-5.6-terra-high`, `gpt-5.6-terra-xhigh-fast` | `gpt-5.6-terra` |
+| `gpt-5.6-sol-high`, `gpt-5.6-sol-xhigh-fast` | `gpt-5.6-sol` |
 | `gemini-3.8-flash-high` | `gemini-3.8-flash` |
 | `grok-4.7-high` | `grok-4.7` |
 | `composer-2.5`, `composer-2.5-fast` | `composer-2.5` |
