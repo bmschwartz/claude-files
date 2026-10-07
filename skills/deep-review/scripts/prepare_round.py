@@ -54,7 +54,7 @@ REVIEWER_SETTINGS = {
     "timeout_seconds": 900,
     "retry_count": 1,
     "retry_delay_seconds": 5,
-    "quorum_fraction": 0.75,
+    "quorum_fraction": 1.0,
     "quorum_grace_seconds": 90,
     "launch_stagger_seconds": 1.5,
     "min_output_bytes": 200,

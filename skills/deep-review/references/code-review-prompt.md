@@ -22,7 +22,7 @@
 ```section task
 ## Your task
 
-Review the code changes in the diff at `{{INPUT_PATH}}` and report the defects a careful senior reviewer would want fixed before merge. A synthesizer, not a person, reads your review: it merges independent reviews of this same diff from several model families and weighs each finding by its evidence and by whether other reviewers found it too. A finding is useful when another engineer can verify it from what you wrote, and a real issue you leave out is lost.
+Review the code changes in the diff at `{{INPUT_PATH}}` and report every issue you find, each at the severity defined below: defects that should be fixed before merge, and also MINOR improvements and POTENTIAL problems you suspect but could not confirm. A synthesizer, not a person, reads your review: it merges independent reviews of this same diff from several model families and weighs each finding by its evidence and by whether other reviewers found it too. A finding is useful when another engineer can verify it from what you wrote, and a real issue you leave out is lost.
 
 Read the whole diff first, then use the codebase in this workspace to check what the changes depend on. This is a read-only review: inspect and report, and leave the fixes to the author.
 ```

@@ -95,9 +95,9 @@ Each model's prompt comes from its profile in [references/model-profiles/](${CLA
 >
 > `gemini-3.8-flash-high` was dropped from the defaults on 2026-09-30. On 2026-09-29 it kept timing out at 480s, and on 2026-09-30 its first attempt failed with a provider connection error ("We're having trouble connecting to the model provider") and went to a retry while the other reviewers finished. Across every Gemini version run so far (3.5 / 3.7 / 3.8 flash: 22 runs in 15 rounds up to 2026-09-30), only 11 produced a usable review and 10 timed out, and it added the fewest single-reviewer findings per run of any external. Its profile stays, so pass it with `--models` when wanted.
 >
-> With two externals, the 75% quorum needs both to succeed, so the straggler cut-off never fires and a slow external runs to the timeout. The internal reviewers usually take longer anyway.
+> Successful external reviewers finish in 3–9 minutes. `run_reviewers.py` uses `timeout_seconds: 900` (raised from 480 to 720 on 2026-09-29, when gpt-5.6-terra and composer-2.5 were finishing within 35s of the limit and gemini and grok kept timing out, and to 900 on 2026-10-02, when Ben allowed gpt-5.6-sol up to 15 minutes), does not retry timeouts, and waits for every external (`quorum_fraction: 1.0` in `_reviewers-config.json`).
 >
-> Successful external reviewers finish in 3–9 minutes. `run_reviewers.py` uses `timeout_seconds: 900` (raised from 480 to 720 on 2026-09-29, when gpt-5.6-terra and composer-2.5 were finishing within 35s of the limit and gemini and grok kept timing out, and to 900 on 2026-10-02, when Ben allowed gpt-5.6-sol up to 15 minutes), does not retry timeouts, and once 75% of externals have succeeded gives stragglers 90s before cutting them off (`quorum_fraction` / `quorum_grace_seconds` in `_reviewers-config.json`).
+> The straggler cut-off (75% quorum, then 90s) was turned off on 2026-10-07. Synthesis waits for the internal reviewers, and in 4 of the 5 rounds from 2026-09-30 to 2026-10-07 both internals finished after every external, so cutting off an external saved no wall-clock time and threw away the tokens it had spent. On 2026-10-07 it killed a gpt-5.6-sol retry 90s after quorum, while the internals ran another 91s and 133s. Sol takes 2–8 minutes per run, so two instances can easily finish more than 90s apart. Pass a lower `quorum_fraction` to bring the cut-off back for a model that hangs.
 
 ---
 
@@ -323,7 +323,7 @@ Report progress as each reviewer completes. For missing/errored review files, no
 - **Produces:** `REVIEW_SUMMARY.md` with verdict block
 - **Invariants:** Start trigger met. Every finding in exactly one section. Verdict block present.
 
-**Start trigger:** Begin synthesis when the external run has exited (it enforces its own 75% quorum and straggler cut-off) **and** every internal reviewer has finished. Internal reviewers are the highest-signal source, so do not start without them — except: if an internal reviewer is still running 10 minutes after everything else finished, start without it and append its review as a **"Late Review"** addendum when it lands. On Cursor (Task externals), apply the same rule with a 75% quorum over the external Tasks.
+**Start trigger:** Begin synthesis when the external run has exited (it waits for every external, up to the timeout) **and** every internal reviewer has finished. Internal reviewers are the highest-signal source, so do not start without them — except: if an internal reviewer is still running 10 minutes after everything else finished, start without it and append its review as a **"Late Review"** addendum when it lands. On Cursor (Task externals), apply the same rule, waiting for every external Task.
 
 Launch `review-synthesizer` agent in **foreground** with: type, mode `initial`, round directory, completed review file paths, failed reviews, diff/plan path, the tests patch path (`tests_path`, when not null), focus filter, and the prompt profile warnings (from `profile_warnings` plus the internal model check).
 
@@ -456,7 +456,7 @@ See [references/output-format.md](${CLAUDE_SKILL_DIR}/references/output-format.m
 | Script | Purpose | When used |
 |--------|---------|-----------|
 | `prepare_round.py` | Scoping, round dir, diff, learnings injection + staleness, per-model prompts from profiles, reviewer config | Phase 2, all types |
-| `run_reviewers.py` | Runs `agent` CLI concurrently for external reviewers with `stream-json` telemetry; quorum cut-off | Claude Code Phase 3; Cursor with `--agent-cli`; deliberation |
+| `run_reviewers.py` | Runs `agent` CLI concurrently for external reviewers with `stream-json` telemetry; optional quorum cut-off (off by default) | Claude Code Phase 3; Cursor with `--agent-cli`; deliberation |
 
 ---
 

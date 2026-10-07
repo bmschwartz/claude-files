@@ -42,7 +42,7 @@ The verdict provides `findings.critical` and `findings.important` counts. Caller
 
 ## Quorum
 
-External reviewers: `run_reviewers.py` (or the Cursor orchestrator) waits until **75% of externals** (rounded up) have succeeded, gives stragglers a 90s grace period, then cuts them off. This balances speed (don't wait for stragglers) with coverage (enough perspectives for meaningful agreement analysis).
+External reviewers: `run_reviewers.py` (or the Cursor orchestrator) waits for **every external**, each bounded by the per-attempt timeout. The internal reviewers usually finish later, so waiting costs little time, and cutting off a straggler would throw away the tokens it already spent.
 
 Internal reviewers: synthesis waits for all of them — they are the highest-signal source — unless one is still running 10 minutes after everything else finished. Late reviews (completing after synthesis) are appended as addenda rather than triggering re-synthesis.
 

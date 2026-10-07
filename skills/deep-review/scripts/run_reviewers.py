@@ -15,8 +15,9 @@ compact log (_log-<output stem>.jsonl) and summarised in its result, so a
 timed-out or cut-off reviewer still shows how far it got.
 
 Launches are staggered to avoid the agent CLI's config-file rename
-race. Timeouts are not retried; only fast failures are. Once
-quorum_fraction of the tasks have succeeded, stragglers get
+race. Timeouts are not retried; only fast failures are. With
+quorum_fraction below 1 (the default is 1: wait for every task),
+once that fraction of the tasks have succeeded, stragglers get
 quorum_grace_seconds to finish and are then cut off.
 
 Stdlib only — no pip dependencies.
@@ -45,7 +46,7 @@ _SAFE_MODEL_RE = re.compile(r'^[a-zA-Z0-9._-]+$')
 DEFAULT_TIMEOUT_SECONDS = 900
 DEFAULT_RETRY_COUNT = 1
 DEFAULT_RETRY_DELAY_SECONDS = 5
-DEFAULT_QUORUM_FRACTION = 0.75
+DEFAULT_QUORUM_FRACTION = 1.0
 DEFAULT_QUORUM_GRACE_SECONDS = 90
 DEFAULT_LAUNCH_STAGGER_SECONDS = 1.5
 DEFAULT_MIN_OUTPUT_BYTES = 200
@@ -314,16 +315,13 @@ async def run_single_reviewer(
     if result_event.get("is_error") or result_event.get("subtype") != "success":
         raise RuntimeError(f"agent result was {result_event.get('subtype')!r}")
     review = review_text(result_event, segments, min_output_bytes)
+    if not review:
+        raise RuntimeError("agent finished without writing a review")
     dropped = len(str(result_event.get("result", "")).strip()) - len(review)
     if dropped > 0:
         telemetry["narration_dropped_chars"] = dropped
-    output_path.write_text(review + "\n" if review else "")
+    output_path.write_text(review + "\n")
     file_size = output_path.stat().st_size
-    if file_size < min_output_bytes:
-        raise RuntimeError(
-            f"agent produced {file_size} bytes of output "
-            f"(minimum {min_output_bytes})"
-        )
 
     return {
         "model": task["model"],

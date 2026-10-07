@@ -102,7 +102,7 @@ Use when host is Claude Code, or Cursor with `--agent-cli`, or after Task backen
   "timeout_seconds": 900,
   "retry_count": 1,
   "retry_delay_seconds": 5,
-  "quorum_fraction": 0.75,
+  "quorum_fraction": 1.0,
   "quorum_grace_seconds": 90,
   "launch_stagger_seconds": 1.5,
   "min_output_bytes": 200,
@@ -113,10 +113,10 @@ Use when host is Claude Code, or Cursor with `--agent-cli`, or after Task backen
 | Setting | Behaviour |
 |---------|-----------|
 | `timeout_seconds` | Per-attempt limit. **Timeouts are never retried** — a hung model would otherwise cost 2× the timeout. |
-| `retry_count` | Retries for fast failures only (non-zero exit, output under `min_output_bytes`). |
-| `quorum_fraction` / `quorum_grace_seconds` | Once this fraction of tasks has succeeded, stragglers get the grace period and are then killed (`status: cut_off`). Use `1.0` to wait for everything. |
+| `retry_count` | Retries for fast failures only (non-zero exit, an error result, or no review text at all). |
+| `quorum_fraction` / `quorum_grace_seconds` | Below `1.0`, once this fraction of tasks has succeeded, stragglers get the grace period and are then killed (`status: cut_off`). The default `1.0` waits for everything: synthesis waits for the internal reviewers anyway, so a cut-off rarely saves time and discards the straggler's tokens. |
 | `launch_stagger_seconds` | Delay between launches; concurrent `agent` starts race on `~/.cursor/cli-config.json.tmp`. |
-| `min_output_bytes` | Smaller outputs (e.g. a lone newline) count as failures. |
+| `min_output_bytes` | How long the model's last text block must be to count as the review on its own (see below). A shorter review, such as a one-line "no defects found", is kept as a success rather than retried; only empty output fails. Until 2026-10-07 anything under 200 bytes failed and was re-run in full. On 2026-09-30 gpt-5.6-terra wrote 106 bytes, was re-run, and wrote 98 bytes after 62 tool calls; both were discarded and the round lost that reviewer. On 2026-10-07 gpt-5.6-sol wrote 70 bytes and its re-run was cut off. |
 
 Run in the background with the Bash tool's `run_in_background: true`:
 
