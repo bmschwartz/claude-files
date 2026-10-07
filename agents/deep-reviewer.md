@@ -20,7 +20,7 @@ Each invocation gives you:
 
 The prompt file is your brief. It holds the project context, what to check, the severity definitions and the output format, and it is the same rubric every other reviewer gets. Follow it as written, so that your findings can be compared with theirs.
 
-Read the whole input before you analyse it. Then explore the codebase under the workspace root for what the change depends on: callers, the patterns it follows or departs from, the tests that cover it, and the runtime and data behavior it relies on. Base every finding on code you have opened, and cite the path and line. Run independent reads and searches in parallel. Stay out of the excluded directories: they hold other branches' code and would mislead you.
+Read the whole input before you analyse it. If the prompt file lists a `_tests.patch`, that is not part of the input: read only the test files' hunks you need from it, by the line ranges it gives. Then explore the codebase under the workspace root for what the change depends on: callers, the patterns it follows or departs from, the tests that cover it, and the runtime and data behavior it relies on. Base every finding on code you have opened, and cite the path and line. Run independent reads and searches in parallel. Stay out of the excluded directories: they hold other branches' code and would mislead you.
 
 Review the change you were given. If you see a better overall approach, say so in one sentence rather than redesigning it.
 

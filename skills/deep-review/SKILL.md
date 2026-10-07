@@ -9,6 +9,8 @@ allowed-tools: Read, Write, Edit, Grep, Glob, Bash(git diff*, git log*, git bran
 
 # Deep Review
 
+> **v1.5.0** · Leaner reviewer input: test files' hunks move from `_diff.patch` to `_tests.patch`, and the prompt indexes them by file, line range and test name (fixtures, factories and `conftest.py` stay in the diff; `--inline-tests` restores the old behaviour). Implementation plans and code references go in with `--plan-file`, trimmed to their Global Constraints and Review Focus; `--drop-section` leaves out spec or plan sections about other repositories. Learnings are injected as one line each with a path to the file instead of their full Finding text.
+>
 > **v1.4.0** · Per-model prompts: every reviewer model gets the same rubric, delivered the way its vendor's official guidance recommends (section order, framing, exploration budget), from a profile in [references/model-profiles/](${CLAUDE_SKILL_DIR}/references/model-profiles/README.md). A model without a profile falls back to the shared baseline with a loud warning. External reviewers run with `stream-json`, so every run logs its tool calls and a timeout shows how far it got.
 >
 > **v1.3.0** · Speed pass: round setup is one `prepare_round.py` call; internal reviewers (`deep-reviewer`) write their own review files; `run_reviewers.py` enforces an external quorum with a straggler cut-off and no longer retries timeouts; leaner synthesis output; cheaper deliberation. Cursor external reviewers use Task subagents; agent CLI remains Claude Code default and Cursor fallback.
@@ -53,6 +55,8 @@ A unified deep-review skill that orchestrates parallel AI reviewers, synthesizes
 | `branch-name` | Review current vs specified branch |
 | `--pr <number>` | Review a GitHub PR |
 | `--changed-only` | Scope to files changed since last review round |
+| `--inline-tests` | Keep test files' hunks in `_diff.patch` instead of moving them to `_tests.patch` |
+| `--keep-tests <glob>` | Keep matching test files in `_diff.patch` (repeatable), e.g. a test file whose hunks every reviewer must read |
 | `--deep-explore` | Run a Phase 1 Explore pre-pass to discover codebase patterns and inject them into reviewer prompts. Off by default — reviewers already explore on their own; enable for unfamiliar codebases or very large diffs. |
 | `--focus <area>` | Focus synthesis on area (security, performance, tests) |
 | `--skip-fix` | Show review but skip interactive fix prompts |
@@ -158,7 +162,11 @@ Run checks **in parallel** (all independent). Stop if any blocking check fails:
 5. Empty diff check (`prepare_round.py` also refuses an empty diff)
 6. Detached HEAD: warn and continue
 
-Do not read or transcribe CLAUDE.md — `prepare_round.py` inlines it. Identify spec docs for the change (e.g. `.claude/docs/[feature-name]/`, or ticket/spec files in `.claude/docs/` matching the branch or diff) and pass each as `--spec-file`.
+Do not read or transcribe CLAUDE.md — `prepare_round.py` inlines it. Identify the docs for the change (e.g. `.claude/docs/[feature-name]/`, `docs/superpowers/specs/` and `docs/superpowers/plans/`, or ticket/spec files matching the branch or diff) and sort them by what they hold:
+
+- **Spec** (what to build and why: decisions, contracts, acceptance criteria, findings): pass as `--spec-file`. It is inlined in full.
+- **Implementation plan or code reference** (tasks, steps, code to write): pass as `--plan-file`. Only its title, `Global Constraints` and `Review Focus` sections are inlined, because the rest restates code that is already in the diff.
+- **Sections about another repository or a PR outside this diff** (e.g. `PR B: nomad-console`, `Console data layer`): pass a distinctive part of each heading as `--drop-section` (repeatable). Read only the docs' headings to decide (`grep -n '^#' <doc>`).
 
 Launch **in parallel**:
 - **Explore agent** (thorough mode with `--deep-explore` only): find similar code patterns, error handling conventions, testing patterns, related impacted code. **Scope exploration to `PROJECT_ROOT`. Do not explore files outside this directory or in `EXCLUDE_DIRS`.** Skipped by default — Phase 3 `deep-reviewer` agents perform diff-driven exploration without needing this pre-pass. Opt in via `--deep-explore` for unfamiliar codebases or very large diffs where shared priming amortizes across reviewers. Write its findings to a file and pass it to `prepare_round.py` as `--patterns-file`, so Phase 2 runs after it.
@@ -194,7 +202,8 @@ Run **one** Bash call. The script creates the round directory, captures `_diff.p
 ```bash
 python3 "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/deep-review}/scripts/prepare_round.py" --type code \
   --diff-args "<git diff args>" --scope-suffix <suffix> \
-  [--branch-name <head-branch>] [--spec-file <path> ...] [--patterns-file <path>] \
+  [--branch-name <head-branch>] [--spec-file <path> ...] [--plan-file <path> ...] \
+  [--drop-section <heading text> ...] [--inline-tests] [--keep-tests <glob> ...] [--patterns-file <path>] \
   [--models <list>] [--count <N>] [--no-external] --context-stdin <<'CONTEXT'
 <Change Context: 2-8 bullets — PR title/description/labels in PR mode, author decisions to respect, verification already done. Omit --context-stdin and the heredoc if there is nothing to add.>
 CONTEXT
@@ -211,7 +220,7 @@ CONTEXT
 | files | `HEAD -- <file> ...` | `files` |
 | `--changed-only` | the delta range since the last round | `delta` |
 
-The script adds `--relative` itself when `GIT_PREFIX` is non-empty and always matches learnings against repo-root-relative paths. Parse its stdout JSON: on `"status": "error"` stop and report. Otherwise show `diff_stat`, warn if `large_diff` (> 3,000 lines), call out `manifest_changes`, and report `learnings` (matched, omitted, expired) and `warnings`. If `profile_warnings` is non-empty, show each one prominently now and keep them for the synthesizer and the final output: those reviewers run on the untuned shared baseline. Keep `round_dir`, `internal_prompt_path`, `internal_profile`, `input_path`, `internal_outputs`, `external_outputs`, `reviewers_config_path` and `profile_warnings` for Phase 3.
+The script adds `--relative` itself when `GIT_PREFIX` is non-empty and always matches learnings against repo-root-relative paths (test files included, though their hunks move out of the diff). Parse its stdout JSON: on `"status": "error"` stop and report. Otherwise show `diff_stat`, report `diff_lines` against `full_diff_lines` with the `test_files` moved to `tests_path`, warn if `large_diff` (> 3,000 lines in `_diff.patch`), call out `manifest_changes`, report `spec` (`source_bytes` → `inlined_bytes`, `kept_plan_sections`, `dropped_sections`), and report `learnings` (matched, omitted, expired) and `warnings`. If `profile_warnings` is non-empty, show each one prominently now and keep them for the synthesizer and the final output: those reviewers run on the untuned shared baseline. Keep `round_dir`, `internal_prompt_path`, `internal_profile`, `input_path`, `tests_path`, `internal_outputs`, `external_outputs`, `reviewers_config_path` and `profile_warnings` for Phase 3 and 4.
 
 With `--dry-run`, pass `--dry-run` to the script, display its output, and stop.
 
@@ -316,7 +325,7 @@ Report progress as each reviewer completes. For missing/errored review files, no
 
 **Start trigger:** Begin synthesis when the external run has exited (it enforces its own 75% quorum and straggler cut-off) **and** every internal reviewer has finished. Internal reviewers are the highest-signal source, so do not start without them — except: if an internal reviewer is still running 10 minutes after everything else finished, start without it and append its review as a **"Late Review"** addendum when it lands. On Cursor (Task externals), apply the same rule with a 75% quorum over the external Tasks.
 
-Launch `review-synthesizer` agent in **foreground** with: type, mode `initial`, round directory, completed review file paths, failed reviews, diff/plan path, focus filter, and the prompt profile warnings (from `profile_warnings` plus the internal model check).
+Launch `review-synthesizer` agent in **foreground** with: type, mode `initial`, round directory, completed review file paths, failed reviews, diff/plan path, the tests patch path (`tests_path`, when not null), focus filter, and the prompt profile warnings (from `profile_warnings` plus the internal model check).
 
 The synthesizer cross-references findings, categorizes them, detects conflicts (writing their rebuttal prompts), generates the verdict block, and writes `REVIEW_SUMMARY.md`. Verify it exists.
 

@@ -12,7 +12,8 @@ Stdlib only — no pip dependencies.
 
 Usage (code):
     prepare_round.py --type code --diff-args "master...HEAD" --scope-suffix vs-master \
-        [--spec-file PATH ...] [--patterns-file PATH] [--context-stdin] \
+        [--spec-file PATH ...] [--plan-file PATH ...] [--drop-section TEXT ...] \
+        [--inline-tests] [--keep-tests GLOB ...] [--patterns-file PATH] [--context-stdin] \
         [--models a,b] [--count 1] [--no-external] [--dry-run]
 
 Usage (plan/spec):
@@ -65,14 +66,32 @@ DEPENDENCY_MANIFESTS = {
     "go.mod", "go.sum", "Cargo.toml", "Cargo.lock", "Gemfile", "Gemfile.lock",
 }
 SEVERITY_RANK = {"critical": 0, "important": 1}
+TEST_GLOBS = [
+    "**/*_test.py", "**/test_*.py", "**/tests/**", "**/test/**", "**/__tests__/**",
+    "**/*.test.*", "**/*.spec.*",
+]
+FIXTURE_GLOBS = [
+    "**/conftest.py", "**/factories/**", "**/factories.py", "**/factory.py", "**/fixtures/**",
+    "**/__mocks__/**", "**/test-helpers*", "**/test-helpers/**", "**/testHelpers*", "**/setupTests.*",
+]
+TEST_DEFINITION = re.compile(
+    r"^([+-])\s*(?:(?:async\s+)?(?:def|class)\s+((?:test_|Test)\w*)"
+    r"|(?:describe|it|test)(?:\.(?:only|skip|each\(.*?\)))?\(\s*(['\"`])(.+?)\3)"
+)
+PLAN_KEEP_HEADINGS = ("global constraints", "review focus")
+MARKDOWN_HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+LEARNING_POINTER = (
+    "Each entry names a pattern. When a change comes near one, open its file: the "
+    "`## Finding` and `## Mitigation` sections say how it shows up and how to fix it."
+)
 LEARNINGS_INTRO = {
     "code": (
         "The following patterns have been identified in prior reviews of this codebase. "
-        "Pay special attention to whether the current changes exhibit these patterns:"
+        f"Pay special attention to whether the current changes exhibit these patterns. {LEARNING_POINTER}"
     ),
     "plan": (
         "The following patterns have been identified in prior reviews of this codebase. "
-        "Evaluate whether the proposed plan addresses or risks repeating these patterns:"
+        f"Evaluate whether the proposed plan addresses or risks repeating these patterns. {LEARNING_POINTER}"
     ),
 }
 LEARNINGS_OUTRO = {
@@ -199,9 +218,11 @@ def parse_frontmatter(text: str) -> tuple[dict, str] | None:
     return fields, match.group(2)
 
 
-def finding_section(body: str) -> str:
-    match = re.search(r"^## Finding\s*\n(.*?)(?=^## |\Z)", body, re.S | re.M)
-    return match.group(1).strip() if match else ""
+def path_label(path: Path, project_root: Path) -> str:
+    try:
+        return path.relative_to(project_root).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def update_staleness(path: Path, text: str, count: int, expire: bool) -> None:
@@ -224,6 +245,7 @@ def match_learnings(
     learnings_dir: Path,
     target_paths: list[str],
     all_files: list[str],
+    project_root: Path,
     write: bool,
 ) -> dict:
     report = {"matched": [], "omitted": 0, "expired": [], "warnings": [], "entries": []}
@@ -253,21 +275,20 @@ def match_learnings(
             report["expired"].append(fields.get("id", path.stem))
             continue
         if any(p.match(t) for p in patterns for t in target_paths):
-            matched.append((fields, finding_section(body), path.stem))
+            matched.append((fields, path))
     matched.sort(key=lambda item: (
         SEVERITY_RANK.get(str(item[0].get("severity", "")).lower(), 9),
         -int(item[0].get("occurrences", 0) or 0),
         [-ord(c) for c in str(item[0].get("last_seen", ""))],
     ))
     report["omitted"] = max(0, len(matched) - LEARNINGS_CAP)
-    for fields, finding, stem in matched[:LEARNINGS_CAP]:
-        learning_id = fields.get("id", stem)
+    for fields, path in matched[:LEARNINGS_CAP]:
+        learning_id = fields.get("id", path.stem)
         report["matched"].append(learning_id)
         report["entries"].append(
             f"**[{learning_id}] {fields.get('title', '')}** "
             f"({fields.get('category', '?')}, {fields.get('severity', '?')}, "
-            f"seen {fields.get('occurrences', 1)}x)\n"
-            + "\n".join(f"   {line}" if line else "" for line in finding.splitlines())
+            f"seen {fields.get('occurrences', 1)}x): `{path_label(path, project_root)}`"
         )
     return report
 
@@ -275,7 +296,7 @@ def match_learnings(
 def learnings_section(kind: str, entries: list[str]) -> str:
     if not entries:
         return ""
-    numbered = "\n\n".join(f"{i}. {entry}" for i, entry in enumerate(entries, 1))
+    numbered = "\n".join(f"{i}. {entry}" for i, entry in enumerate(entries, 1))
     return (
         f"## Known Project Learnings\n\n{LEARNINGS_INTRO[kind]}\n\n{numbered}\n\n"
         f"{LEARNINGS_OUTRO[kind]}"
@@ -406,6 +427,163 @@ def plan_referenced_paths(plan_input: Path) -> list[str]:
     return sorted(paths)
 
 
+def markdown_sections(text: str) -> list[tuple[int, str, str]]:
+    """Split markdown into (level, heading, block) parts, ignoring headings inside code fences.
+
+    Level 0 is the text before the first heading; each block starts with its heading line.
+    """
+    parts: list[tuple[int, str, list[str]]] = [(0, "", [])]
+    fence = None
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if fence:
+            if stripped.startswith(fence):
+                fence = None
+        elif stripped.startswith(("```", "~~~")):
+            fence = stripped[:3]
+        else:
+            heading = MARKDOWN_HEADING.match(line)
+            if heading:
+                parts.append((len(heading.group(1)), heading.group(2), []))
+        parts[-1][2].append(line)
+    return [(level, heading, "\n".join(lines)) for level, heading, lines in parts]
+
+
+def trim_document(text: str, keep: tuple[str, ...] | None, drop: list[str]) -> tuple[str, list[str], list[str]]:
+    """Keep a document's sections by heading. Returns (text, kept headings, dropped headings).
+
+    A section carries its subsections. A heading containing a `drop` substring removes its
+    section, and wins over `keep`. With `keep` set, only the title (level 1), the text before
+    it and sections whose heading contains a `keep` substring stay; with `keep` None,
+    everything not dropped stays.
+    """
+    drop_lowered = [d.lower() for d in drop]
+    stack: list[tuple[int, str | None]] = []
+    blocks, kept, dropped = [], [], []
+    for level, heading, block in markdown_sections(text):
+        decision = None
+        if level:
+            while stack and stack[-1][0] >= level:
+                stack.pop()
+            inherited = stack[-1][1] if stack else None
+            lowered = heading.lower()
+            if inherited == "drop" or any(d in lowered for d in drop_lowered):
+                decision = "drop"
+                if inherited != "drop":
+                    dropped.append(heading)
+            elif keep is not None and any(k in lowered for k in keep):
+                decision = "keep"
+                if inherited != "keep":
+                    kept.append(heading)
+            else:
+                decision = inherited
+            stack.append((level, decision))
+        if decision == "keep" or (decision is None and (keep is None or level <= 1)):
+            blocks.append(block)
+    return "\n".join(blocks).strip(), kept, dropped
+
+
+def diff_file_chunks(diff_text: str) -> list[tuple[str, str]]:
+    """Split a git diff into (path, chunk) per file; the path is the new one, or the old for deletions."""
+    chunks = []
+    for chunk in re.split(r"(?m)^(?=diff --git )", diff_text):
+        if not chunk.startswith("diff --git "):
+            continue
+        new = re.search(r"(?m)^\+\+\+ b/(.+)$", chunk)
+        old = re.search(r"(?m)^--- a/(.+)$", chunk)
+        header = re.match(r"diff --git a/(.+) b/(.+)$", chunk, re.M)
+        if new or old:
+            path = (new or old).group(1)
+        else:
+            path = header.group(2) if header else ""
+        chunks.append((path, chunk))
+    return chunks
+
+
+def test_index_entry(path: str, chunk: str, first_line: int, last_line: int) -> str:
+    added = removed = 0
+    new_names: list[str] = []
+    removed_names: list[str] = []
+    for line in chunk.splitlines():
+        if line.startswith(("+++ ", "--- ")):
+            continue
+        if line.startswith("+"):
+            added += 1
+        elif line.startswith("-"):
+            removed += 1
+        definition = TEST_DEFINITION.match(line)
+        if definition:
+            name = definition.group(2) or f'"{definition.group(4)}"'
+            (new_names if definition.group(1) == "+" else removed_names).append(name)
+    changed = [n for n in new_names if n in removed_names]
+    entry = f"- `{path}` (+{added}/-{removed}): lines {first_line}-{last_line}"
+    for label, names in (
+        ("new", [n for n in new_names if n not in changed]),
+        ("edited", changed),
+        ("removed", [n for n in removed_names if n not in changed]),
+    ):
+        if names:
+            entry += f"; {label}: " + ", ".join(dict.fromkeys(names))
+    return entry
+
+
+def split_tests(diff_text: str, keep_globs: list[str]) -> tuple[str, str, list[str], list[str]]:
+    """Move test files' hunks out of the diff. Returns (diff, tests patch, test paths, index entries).
+
+    Fixtures, factories, conftest.py and `keep_globs` stay in the diff. Nothing moves when the
+    diff holds only tests or no tests.
+    """
+    stay_patterns = [glob_regex(g) for g in [*FIXTURE_GLOBS, *keep_globs]]
+    test_patterns = [glob_regex(g) for g in TEST_GLOBS]
+    production, tests = [], []
+    for path, chunk in diff_file_chunks(diff_text):
+        is_test = any(p.match(path) for p in test_patterns) and not any(p.match(path) for p in stay_patterns)
+        (tests if is_test else production).append((path, chunk))
+    if not production or not tests:
+        return diff_text, "", [], []
+    entries, line = [], 1
+    for path, chunk in tests:
+        length = chunk.count("\n")
+        entries.append(test_index_entry(path, chunk, line, line + length - 1))
+        line += length
+    return (
+        "".join(chunk for _, chunk in production),
+        "".join(chunk for _, chunk in tests),
+        [path for path, _ in tests],
+        entries,
+    )
+
+
+def tests_section(tests_path: Path, tests_patch: str, entries: list[str]) -> str:
+    return (
+        "## Test Changes (not in the diff)\n"
+        f"The changed test files' hunks are in `{tests_path}` ({tests_patch.count(chr(10))} lines), "
+        "not in the diff; fixtures, factories and `conftest.py` stay in the diff. When you check "
+        "whether a production change is covered, read the hunks of the test files that cover it "
+        "from that patch, using the line ranges below: always when the change writes or computes "
+        "a stored or derived value, and whenever a finding depends on what a test does. Report "
+        "test-coverage gaps as usual.\n\n" + "\n".join(entries)
+    )
+
+
+def spec_context(args) -> tuple[str, dict]:
+    """Inline --spec-file in full and --plan-file trimmed to PLAN_KEEP_HEADINGS, minus --drop-section."""
+    drop = args.drop_section or []
+    documents, report = [], {"spec_files": args.spec_file or [], "plan_files": args.plan_file or [],
+                             "kept_plan_sections": [], "dropped_sections": [], "source_bytes": 0}
+    for path, keep in [(p, None) for p in args.spec_file or []] + [(p, PLAN_KEEP_HEADINGS) for p in args.plan_file or []]:
+        source = Path(path).read_text()
+        report["source_bytes"] += len(source.encode())
+        text, kept, dropped = trim_document(source, keep, drop)
+        report["kept_plan_sections"] += kept
+        report["dropped_sections"] += dropped
+        if text:
+            documents.append(text)
+    context = "\n\n".join(documents)
+    report["inlined_bytes"] = len(context.encode())
+    return context, report
+
+
 def external_models(args) -> list[str]:
     if args.no_external:
         return []
@@ -466,6 +644,7 @@ def prepare(args) -> dict:
             "other branches and would give you misleading context."
         )
     scope_sections = len(sections)
+    tests_path, tests_patch, test_entries = None, "", []
     if args.context_stdin:
         context = sys.stdin.read().strip()
         if context:
@@ -484,17 +663,27 @@ def prepare(args) -> dict:
             line for line in git(["diff", "--name-only", *diff_args], project_root).splitlines()
             if line
         ]
-        diff_lines: int | None = diff_text.count("\n")
+        full_diff_lines = diff_text.count("\n")
         round_dir = (
             project_root / ".claude" / "reviews" / sanitize_branch(branch)
             / f"{timestamp}-{args.scope_suffix}"
         )
         input_path = round_dir / "_diff.patch"
+        test_paths: list[str] = []
+        if not args.inline_tests:
+            diff_text, tests_patch, test_paths, test_entries = split_tests(diff_text, args.keep_tests or [])
+        if tests_patch:
+            tests_path = round_dir / "_tests.patch"
+        diff_lines: int | None = diff_text.count("\n")
         report.update({
             "git_diff_command": "git " + " ".join(diff_command),
             "diff_stat": git(["diff", "--stat", *relative, *diff_args], project_root).rstrip(),
             "diff_lines": diff_lines,
+            "full_diff_lines": full_diff_lines,
             "large_diff": diff_lines > LARGE_DIFF_LINES,
+            "tests_path": str(tests_path) if tests_path else None,
+            "test_files": test_paths,
+            "test_patch_lines": tests_patch.count("\n"),
             "changed_files": len(changed),
             "manifest_changes": [f for f in changed if Path(f).name in DEPENDENCY_MANIFESTS],
         })
@@ -509,10 +698,9 @@ def prepare(args) -> dict:
                 "## Codebase Patterns (from automated analysis)\n"
                 + Path(args.patterns_file).read_text().strip()
             )
-        if args.spec_file:
-            spec_text = "\n\n".join(Path(p).read_text().strip() for p in args.spec_file)
+        spec_text, report["spec"] = spec_context(args)
+        if spec_text:
             sections.append(f"## Feature Specification Context\n{spec_text}")
-        report["spec_files"] = args.spec_file or []
         target_paths = changed
         template = load_sections("code-review-prompt.md")
         learnings_kind = "code"
@@ -542,14 +730,16 @@ def prepare(args) -> dict:
     except ValueError:
         reviews_label = str(reviews_root)
     sections.insert(scope_sections, (
-        f"## Other Reviews\nApart from the input named in your task, stay out of `{reviews_label}`: "
+        f"## Other Reviews\nApart from the input files named in this prompt, stay out of `{reviews_label}`: "
         "it holds this and earlier review rounds, including other reviewers' output. Your review "
         "has to be independent of theirs for the cross-model comparison to mean anything."
     ))
+    if tests_path:
+        sections.insert(scope_sections + 1, tests_section(tests_path, tests_patch, test_entries))
 
     all_files = repository_files(git_root)
     learnings = match_learnings(
-        git_root / ".claude" / "learnings", target_paths, all_files, write=not args.dry_run
+        git_root / ".claude" / "learnings", target_paths, all_files, project_root, write=not args.dry_run
     )
     report["warnings"].extend(learnings.pop("warnings"))
     section = learnings_section(learnings_kind, learnings.pop("entries"))
@@ -604,6 +794,8 @@ def prepare(args) -> dict:
         round_dir.mkdir(parents=True, exist_ok=False)
         if args.type == "code":
             input_path.write_text(diff_text)
+        if tests_path:
+            tests_path.write_text(tests_patch)
         for key, text in prompts.items():
             prompt_paths[key].write_text(text)
         if tasks:
@@ -620,7 +812,17 @@ def main() -> None:
     parser.add_argument("--branch-name", help="Override branch name (PR mode: head branch)")
     parser.add_argument("--plan-input", help="Plan version directory or plan/spec file")
     parser.add_argument("--plan-root", help="Plan root; round goes under <plan-root>/reviews/")
-    parser.add_argument("--spec-file", action="append", help="Spec doc to inline (repeatable)")
+    parser.add_argument("--spec-file", action="append", help="Spec doc to inline in full (repeatable)")
+    parser.add_argument("--plan-file", action="append",
+                        help="Implementation plan or code reference: only its title, Global "
+                             "Constraints and Review Focus sections are inlined (repeatable)")
+    parser.add_argument("--drop-section", action="append",
+                        help="Leave out spec/plan sections whose heading contains this text, "
+                             "with their subsections (repeatable)")
+    parser.add_argument("--inline-tests", action="store_true",
+                        help="Keep test files' hunks in _diff.patch instead of _tests.patch")
+    parser.add_argument("--keep-tests", action="append",
+                        help="Glob of test files to keep in _diff.patch (repeatable)")
     parser.add_argument("--patterns-file", help="Phase 1 --deep-explore output to inline")
     parser.add_argument("--context-stdin", action="store_true",
                         help="Read a Change Context section from stdin")

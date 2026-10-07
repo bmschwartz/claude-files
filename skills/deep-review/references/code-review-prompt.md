@@ -5,18 +5,19 @@
 > **The rubric is the same for every model.** `dimensions`, `severities` and the per-finding fields in `output` define what the synthesizer compares across reviewers, so a model profile may reorder sections and add text around them but never changes their wording. See [model-profiles/README.md](model-profiles/README.md).
 >
 > The blocks appear in the default order. Placeholders:
-> - `{{INPUT_PATH}}` — the round's `_diff.patch`
+> - `{{INPUT_PATH}}` — the round's `_diff.patch`: production code, fixtures and factories. Test files' hunks are in `_tests.patch` unless `--inline-tests` (or `--keep-tests`) keeps them, or the diff is all tests
 > - `{{READ_BUDGET}}` — the advisory exploration budget, scaled by diff size and the profile's `budget_scale`; empty when the profile sets `budget: none`
 > - `{{DELIVERY}}` — how to hand back the review: write to the output path (internal `deep-reviewer`) or return it as the final message (external agent CLI)
 > - `{{CONTEXT_SECTIONS}}` — generated, in this order, omitting any that are empty:
 >   1. `## Workspace Scope` — when invoked from a subdirectory (`GIT_PREFIX` non-empty)
 >   2. `## Excluded Directories` — when `EXCLUDE_DIRS` is non-empty
->   3. `## Other Reviews` — always: stay out of the reviews folder (apart from the input), which holds other reviewers' output; reviewers that read each other's work make cross-model agreement meaningless
->   4. `## Change Context` — orchestrator-supplied text (`--context-stdin`): PR metadata, author decisions, verification already done
->   5. `## Project Conventions (from <path>)` — CLAUDE.md / .claude/CLAUDE.md (AGENTS.md if neither exists)
->   6. `## Codebase Patterns (from automated analysis)` — `--patterns-file`, only with `--deep-explore`
->   7. `## Feature Specification Context` — each `--spec-file`
->   8. `## Known Project Learnings` — matched learnings per [learning-injection.md](learning-injection.md)
+>   3. `## Other Reviews` — always: stay out of the reviews folder (apart from the input files named in the prompt), which holds other reviewers' output; reviewers that read each other's work make cross-model agreement meaningless
+>   4. `## Test Changes (not in the diff)` — when test hunks moved to `_tests.patch`: its path, when to read it, and one line per test file with its line range and the test names it adds, edits or removes
+>   5. `## Change Context` — orchestrator-supplied text (`--context-stdin`): PR metadata, author decisions, verification already done
+>   6. `## Project Conventions (from <path>)` — CLAUDE.md / .claude/CLAUDE.md (AGENTS.md if neither exists)
+>   7. `## Codebase Patterns (from automated analysis)` — `--patterns-file`, only with `--deep-explore`
+>   8. `## Feature Specification Context` — each `--spec-file` in full, each `--plan-file` trimmed to its title, `Global Constraints` and `Review Focus`, both minus `--drop-section` headings
+>   9. `## Known Project Learnings` — matched learnings per [learning-injection.md](learning-injection.md), one line each with the learning file's path
 
 ```section task
 ## Your task

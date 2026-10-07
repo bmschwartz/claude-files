@@ -24,6 +24,7 @@ PROJECT_ROOT/.claude/reviews/
 │   │   ├── _review-prompt-gpt-5.6-terra.md
 │   │   ├── _review-prompt-gemini-3.8-flash.md
 │   │   ├── _diff.patch
+│   │   ├── _tests.patch                              # Test files' hunks, read on demand
 │   │   ├── _reviewers-config.json                    # run_reviewers.py config
 │   │   ├── _external-results.json                    # run_reviewers.py stdout (with telemetry)
 │   │   ├── _external-progress.log                    # run_reviewers.py stderr
@@ -89,7 +90,8 @@ PROJECT_ROOT/.claude/reviews/
 |------|---------|------------|
 | `REVIEW.md` | Links to most recent review round | Phase 5 |
 | `_review-prompt-<key>.md` | Prompt for one reviewer model, rendered from its profile (audit trail of what each model received) | `prepare_round.py` (Phase 2) |
-| `_diff.patch` | The diff that was reviewed (audit trail, code type) | `prepare_round.py` (Phase 2) |
+| `_diff.patch` | The diff that was reviewed: production code, fixtures and factories (audit trail, code type) | `prepare_round.py` (Phase 2) |
+| `_tests.patch` | Test files' hunks, indexed by file and line range in the prompt; absent with `--inline-tests` or when the diff is all tests or has none | `prepare_round.py` (Phase 2) |
 | `_reviewers-config.json` | External reviewer tasks and runner settings | `prepare_round.py` (Phase 2) |
 | `_external-results.json` / `_external-progress.log` | Runner result JSON (with per-reviewer telemetry) / progress log | `run_reviewers.py` (Phase 3) |
 | `_log-<output stem>.jsonl` | One line per tool call of an external reviewer or rebuttal: time, duration, tool, target | `run_reviewers.py` |

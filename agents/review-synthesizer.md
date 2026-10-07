@@ -16,7 +16,7 @@ When invoked you will receive:
 - A **round directory path** containing the raw review files
 - A list of **successful review file paths**
 - A list of **failed reviews** (model + instance that failed), if any
-- For `code` type: a **diff file path** (`_diff.patch`) for reference when resolving ambiguities
+- For `code` type: a **diff file path** (`_diff.patch`) for reference when resolving ambiguities, and a **tests patch path** (`_tests.patch`) when the round moved test files' hunks out of the diff
 - For `plan`/`spec` type: a **plan version directory path** containing the plan documents
 - Optional: a **focus filter** (code type only) — e.g., `security`, `performance`, `tests`
 - Optional: a **prior REVIEW_SUMMARY.md path** (plan/spec type, for previously-addressed filtering; also used in re-synthesis mode)
@@ -43,7 +43,7 @@ In this mode, read the prior Conflicts section to understand what was disputed, 
 
 1. Read all successful review files. If any reviews failed, note the reduced coverage at the top of the summary.
 
-2. For `code` type: read the diff file (`_diff.patch`) for reference. For `plan`/`spec` type: read all plan documents in the plan version directory.
+2. For `code` type: read the diff file (`_diff.patch`) for reference. Do not read `_tests.patch` whole: when a finding turns on what a test does, find that test file's `diff --git` header in it (`Grep`) and read only that file's hunks. For `plan`/`spec` type: read all plan documents in the plan version directory.
 
 3. For `plan`/`spec` type: check if a prior `REVIEW_SUMMARY.md` exists (from a previous review round). If so, read it to identify items that were already addressed. Filter these out — do not re-surface recommendations that were previously applied.
 

@@ -44,22 +44,15 @@ Insert the following section into the review prompt or exploration context. Only
 ## Known Project Learnings
 
 The following patterns have been identified in prior reviews of this codebase.
-Pay special attention to whether the current changes exhibit or address these patterns.
+Pay special attention to whether the current changes exhibit these patterns. Each entry names a
+pattern. When a change comes near one, open its file: the `## Finding` and `## Mitigation`
+sections say how it shows up and how to fix it.
 
-1. **[L-003] Auth middleware ordering dependency** (architecture, critical, seen 3x)
-   This service has an implicit ordering dependency between the auth middleware
-   and the rate limiter. If auth runs after rate limiting, unauthenticated
-   requests consume rate limit quota.
-
-2. **[L-002] Missing transaction wrapping in API handlers** (pattern-violation, important, seen 1x)
-   Database mutations in src/api/ handlers must be wrapped in transactions.
-   Several handlers were found performing multi-table writes without
-   transaction boundaries.
+1. **[L-003] Auth middleware ordering dependency: if auth runs after rate limiting, unauthenticated requests consume quota** (architecture, critical, seen 3x): `.claude/learnings/L-003.md`
+2. **[L-002] Database mutations in src/api/ handlers must be wrapped in transactions** (pattern-violation, important, seen 1x): `.claude/learnings/L-002.md`
 ```
 
-Each entry shows:
-- **Header:** `[ID] Title` (category, severity, seen Nx)
-- **Body:** The `## Finding` section content from the learning file (not Context or Mitigation — keep prompt size manageable)
+Each entry is one line: `[ID] Title` (category, severity, seen Nx) and the learning file's path, relative to the project root (absolute when the learnings directory is outside it). The title is written as the rule, so it is enough to recognise the pattern; the reviewer opens the file for the detail. The full `## Finding` text is not injected: ten of them made up 13–16 KB of every prompt, repeated on every reviewer turn.
 
 ## Injection Points
 
