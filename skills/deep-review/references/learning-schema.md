@@ -1,14 +1,14 @@
 # Learning Schema
 
-> Read this when: creating, updating, or validating learning files in `.claude/learnings/`.
+> Read this when: drafting a learning for `scripts/learnings.py`, or validating learning files in the store.
 
 ## File Location & Naming
 
-Learning files live in `.claude/learnings/` at the repository root (sibling to `.claude/reviews/`).
+Learning files live in the project's shared store, `~/.claude/projects/<main-checkout slug>/learnings/` (`scripts/learnings.py paths` prints it). Every checkout's `.claude/learnings` is a symlink to it. Only `scripts/learnings.py` writes there.
 
 - **Naming:** `L-<NNN>.md` where NNN is zero-padded to 3 digits (e.g., `L-001.md`, `L-042.md`)
-- **ID assignment:** Scan existing files, take the highest NNN, increment by 1. If no files exist, start at `L-001`.
-- **Index:** `.claude/learnings/LEARNINGS.md` — table of all learnings, newest first.
+- **ID assignment:** `learnings.py new` assigns the next ID under the store lock and creates the file exclusively. Never pick an ID by hand: two sessions scanning the directory at once would mint the same one.
+- **Index:** `LEARNINGS.md` in the store — table of all learnings, newest first, rebuilt by every `learnings.py` write.
 
 ## Frontmatter Schema
 
@@ -54,6 +54,7 @@ _staleness_count: 0                   # internal: consecutive zero-match injecti
 | `status` | Yes | Governs lifecycle behavior |
 | `promoted_to` | No | Only populated when `status: promoted` |
 | `_staleness_count` | Yes | Internal tracking, default 0. Not shown in LEARNINGS.md index. |
+| `promotion_pending` | No | Set while a promotion made in a worktree waits in `<store>/promotions/<name>/` for `learnings.py apply-promotions` in the main checkout; `status` stays `active` until then, and `apply-promotions` removes it. |
 
 ## Body Sections
 
@@ -87,7 +88,7 @@ What to do about it — specific actions, patterns to follow, or checks to perfo
 ```
 
 - **active** — Default for new learnings. Injected into matching reviews, plans, and feature exploration.
-- **promoted** — Graduated to a CLAUDE.md rule. The learning file is updated with `promoted_to` referencing the CLAUDE.md entry. No longer injected separately (CLAUDE.md handles it).
+- **promoted** — Graduated to a CLAUDE.md rule. A promotion made in a worktree first waits with `promotion_pending` set (still `active`) until `learnings.py apply-promotions` adds the rule to the main checkout's `CLAUDE.md`. The learning file is updated with `promoted_to` referencing the CLAUDE.md entry. No longer injected separately (CLAUDE.md handles it).
 - **expired** — Scope no longer matches any files in the repo. Retained on disk for audit but skipped during injection and matching.
 
 ## LEARNINGS.md Index Format

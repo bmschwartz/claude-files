@@ -27,7 +27,20 @@ import shlex
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
+
+from learnings_store import (
+    MIGRATE_WARNING,
+    LockTimeout,
+    StorePaths,
+    awaiting_migration,
+    link_checkout_copy,
+    store_lock,
+    store_paths,
+    write_atomic,
+)
+from learnings_text import bump_staleness, glob_regex, parse_frontmatter
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_MODELS = ["composer-2.5", "gpt-5.6-sol-high"]
@@ -147,77 +160,6 @@ def workspace_scoping(project_root: Path) -> dict:
     }
 
 
-def glob_regex(pattern: str) -> re.Pattern:
-    out = ""
-    i = 0
-    while i < len(pattern):
-        if pattern.startswith("**/", i):
-            out += "(?:.*/)?"
-            i += 3
-        elif pattern.startswith("**", i):
-            out += ".*"
-            i += 2
-        elif pattern[i] == "*":
-            out += "[^/]*"
-            i += 1
-        elif pattern[i] == "?":
-            out += "[^/]"
-            i += 1
-        elif pattern[i] == "[" and "]" in pattern[i + 1:]:
-            end = pattern.index("]", i + 1)
-            out += "[" + pattern[i + 1:end].replace("\\", "\\\\") + "]"
-            i = end + 1
-        else:
-            out += re.escape(pattern[i])
-            i += 1
-    return re.compile(out + r"\Z")
-
-
-def parse_scalar(raw: str):
-    raw = raw.strip()
-    if raw.startswith("[") and raw.endswith("]"):
-        return [parse_scalar(part) for part in raw[1:-1].split(",") if part.strip()]
-    if len(raw) >= 2 and raw[0] == raw[-1] == '"':
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            return raw[1:-1]
-    if len(raw) >= 2 and raw[0] == raw[-1] == "'":
-        return raw[1:-1]
-    if re.fullmatch(r"-?\d+", raw):
-        return int(raw)
-    if re.fullmatch(r"-?\d+\.\d+", raw):
-        return float(raw)
-    return raw
-
-
-def parse_frontmatter(text: str) -> tuple[dict, str] | None:
-    match = re.match(r"---\n(.*?)\n---\n?(.*)", text, re.S)
-    if not match:
-        return None
-    fields: dict = {}
-    current_list_key: str | None = None
-    for line in match.group(1).splitlines():
-        if not line.strip():
-            continue
-        list_item = re.match(r"\s+-\s+(.*)", line)
-        if list_item and current_list_key:
-            fields[current_list_key].append(parse_scalar(list_item.group(1)))
-            continue
-        top_level = re.match(r"([A-Za-z_][\w]*):\s*(.*)", line)
-        if top_level:
-            key, value = top_level.groups()
-            if value.strip() == "":
-                fields[key] = []
-                current_list_key = key
-            else:
-                fields[key] = parse_scalar(value)
-                current_list_key = None
-        else:
-            current_list_key = None
-    return fields, match.group(2)
-
-
 def path_label(path: Path, project_root: Path) -> str:
     try:
         return path.relative_to(project_root).as_posix()
@@ -225,26 +167,73 @@ def path_label(path: Path, project_root: Path) -> str:
         return str(path)
 
 
-def update_staleness(path: Path, text: str, count: int, expire: bool) -> None:
-    head, sep, rest = text.partition("\n---")
-    if re.search(r"^_staleness_count:.*$", head, re.M):
-        head = re.sub(r"^_staleness_count:.*$", f"_staleness_count: {count}", head, flags=re.M)
-    else:
-        head = f"{head}\n_staleness_count: {count}"
-    if expire:
-        head = re.sub(r"^status:.*$", "status: expired", head, flags=re.M)
-    path.write_text(head + sep + rest)
-
-
 def repository_files(git_root: Path) -> list[str]:
     output = git(["ls-files", "--cached", "--others", "--exclude-standard"], git_root)
     return [line for line in output.splitlines() if line]
 
 
+@dataclass
+class LearningVerdict:
+    staleness: int
+    expire: bool
+    matched: bool
+
+
+def evaluate_learning(
+    fields: dict, checkout_files: list[str], default_files: list[str], target_paths: list[str]
+) -> LearningVerdict:
+    scope = fields.get("scope") or []
+    if isinstance(scope, str):
+        scope = [scope]
+    patterns = [glob_regex(glob) for glob in scope]
+    live = any(p.match(f) for p in patterns for files in (checkout_files, default_files) for f in files)
+    staleness = 0 if live else int(fields.get("_staleness_count", 0) or 0) + 1
+    expire = staleness >= STALENESS_LIMIT
+    matched = not expire and any(p.match(t) for p in patterns for t in target_paths)
+    return LearningVerdict(staleness=staleness, expire=expire, matched=matched)
+
+
+def default_branch_files(git_root: Path) -> tuple[list[str], str | None]:
+    ref = git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], git_root, check=False).strip()
+    if not ref:
+        for candidate in ("master", "main"):
+            if git(["rev-parse", "--verify", "--quiet", candidate], git_root, check=False).strip():
+                ref = candidate
+                break
+    if not ref:
+        return [], "no default branch (origin/HEAD, master, main): learnings staleness counts only this checkout's files"
+    output = git(["ls-tree", "-r", "--name-only", ref], git_root, check=False)
+    return [line for line in output.splitlines() if line], None
+
+
+def write_staleness(learnings_dir: Path, updates: list[tuple[Path, LearningVerdict]], warnings: list[str]) -> None:
+    try:
+        with store_lock(learnings_dir, timeout_seconds=10.0):
+            for path, verdict in updates:
+                try:
+                    write_atomic(path, bump_staleness(path.read_bytes().decode(), verdict.staleness, verdict.expire))
+                except (OSError, ValueError) as error:
+                    warnings.append(f"{path.name}: staleness not recorded: {error}")
+    except LockTimeout as error:
+        warnings.append(f"learnings staleness not recorded: {error}")
+
+
+def checkout_link_warnings(paths: StorePaths, timestamp: str, dry_run: bool) -> list[str]:
+    if awaiting_migration(paths):
+        return [MIGRATE_WARNING]
+    if dry_run:
+        return []
+    try:
+        return link_checkout_copy(paths, timestamp, timeout_seconds=10.0)
+    except (LockTimeout, OSError) as error:
+        return [f"learnings symlink not checked: {error}"]
+
+
 def match_learnings(
     learnings_dir: Path,
     target_paths: list[str],
-    all_files: list[str],
+    checkout_files: list[str],
+    default_files: list[str],
     project_root: Path,
     write: bool,
 ) -> dict:
@@ -252,30 +241,24 @@ def match_learnings(
     if not learnings_dir.is_dir():
         return report
     matched = []
+    updates = []
     for path in sorted(learnings_dir.glob("L-*.md")):
-        text = path.read_text()
-        parsed = parse_frontmatter(text)
+        parsed = parse_frontmatter(path.read_bytes().decode())
         if parsed is None:
             report["warnings"].append(f"{path.name}: unparseable frontmatter, skipped")
             continue
         fields, body = parsed
         if fields.get("status", "active") != "active":
             continue
-        scope = fields.get("scope") or []
-        if isinstance(scope, str):
-            scope = [scope]
-        patterns = [glob_regex(glob) for glob in scope]
-        matches_repo = any(p.match(f) for p in patterns for f in all_files)
-        previous = int(fields.get("_staleness_count", 0) or 0)
-        staleness = 0 if matches_repo else previous + 1
-        expire = staleness >= STALENESS_LIMIT
-        if write and staleness != previous:
-            update_staleness(path, text, staleness, expire)
-        if expire:
+        verdict = evaluate_learning(fields, checkout_files, default_files, target_paths)
+        if verdict.staleness != int(fields.get("_staleness_count", 0) or 0):
+            updates.append((path, verdict))
+        if verdict.expire:
             report["expired"].append(fields.get("id", path.stem))
-            continue
-        if any(p.match(t) for p in patterns for t in target_paths):
+        elif verdict.matched:
             matched.append((fields, path))
+    if write and updates:
+        write_staleness(learnings_dir, updates, report["warnings"])
     matched.sort(key=lambda item: (
         SEVERITY_RANK.get(str(item[0].get("severity", "")).lower(), 9),
         -int(item[0].get("occurrences", 0) or 0),
@@ -737,10 +720,29 @@ def prepare(args) -> dict:
     if tests_path:
         sections.insert(scope_sections + 1, tests_section(tests_path, tests_patch, test_entries))
 
-    all_files = repository_files(git_root)
+    paths = store_paths(project_root)
+    migrating = awaiting_migration(paths)
+    report["warnings"].extend(checkout_link_warnings(paths, timestamp, dry_run=args.dry_run))
+    default_files, default_warning = default_branch_files(git_root)
+    if default_warning:
+        report["warnings"].append(default_warning)
     learnings = match_learnings(
-        git_root / ".claude" / "learnings", target_paths, all_files, project_root, write=not args.dry_run
+        paths.learnings_dir,
+        target_paths,
+        repository_files(git_root),
+        default_files,
+        project_root,
+        write=not args.dry_run and not migrating,
     )
+    promotions = paths.learnings_dir / "promotions"
+    pending = sorted(
+        entry.name for entry in promotions.iterdir() if entry.is_dir() and entry.name != "applied"
+    ) if promotions.is_dir() else []
+    if pending:
+        report["warnings"].append(
+            f"{len(pending)} pending promotion(s) in {promotions}: {', '.join(pending)} — "
+            f"run learnings.py apply-promotions from the main checkout"
+        )
     report["warnings"].extend(learnings.pop("warnings"))
     section = learnings_section(learnings_kind, learnings.pop("entries"))
     if section:
