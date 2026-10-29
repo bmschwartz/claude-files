@@ -4,7 +4,7 @@
 
 ## Overview
 
-Learnings from `.claude/learnings/` are injected into review prompts and feature exploration to prime reviewers and planners with historical context. This document defines how learnings are matched against targets, ranked, and formatted for injection.
+Learnings from the project's shared store (see `learning-schema.md`) are injected into review prompts and feature exploration to prime reviewers and planners with historical context. This document defines how learnings are matched against targets, ranked, and formatted for injection.
 
 For `/deep-review` prompts this is implemented by `scripts/prepare_round.py` (Phase 2) — keep the script and this document in sync. Feature Explore and Complete still apply it by hand.
 
@@ -15,12 +15,12 @@ For `/deep-review` prompts this is implemented by `scripts/prepare_round.py` (Ph
    - **Plan/spec review (Phase 2):** File paths referenced in plan documents
    - **Feature Explore:** File paths inferred from feature description + architecture context
 
-2. **Load active learnings:** Read all `L-*.md` files from `.claude/learnings/`. Skip files where `status` is `promoted` or `expired`.
+2. **Load active learnings:** `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py list --status active --json` (promoted and expired learnings are already left out).
 
 3. **Match:** For each active learning, expand its `scope` globs against the repository root. A learning **matches** if any of its scope globs matches any target file path. Multiple scope entries are OR'd.
 
-4. **Staleness check (lazy):** For each active learning evaluated (whether or not it matches the targets):
-   - Expand scope globs against the **entire repository** (not just the diff/targets).
+4. **Staleness check (lazy, `prepare_round.py` only):** `prepare_round.py` maintains staleness under the store lock; Feature Explore and Complete, which apply this document by hand, compute matches and never write learning files. For each active learning evaluated (whether or not it matches the targets):
+   - Expand scope globs against the **entire repository** (not just the diff/targets): this checkout's files and the default branch's (`origin/HEAD`, else `master`/`main`), so a worktree on an old branch can't expire a learning for code that exists only on the default branch.
    - If **zero files** in the repo match any scope glob: increment `_staleness_count` in the learning file.
    - If **any file** matches: reset `_staleness_count` to 0.
    - If `_staleness_count >= 3`: set `status: expired`. Log: "Learning L-NNN expired (scope no longer matches any files)."
@@ -48,8 +48,8 @@ Pay special attention to whether the current changes exhibit these patterns. Eac
 pattern. When a change comes near one, open its file: the `## Finding` and `## Mitigation`
 sections say how it shows up and how to fix it.
 
-1. **[L-003] Auth middleware ordering dependency: if auth runs after rate limiting, unauthenticated requests consume quota** (architecture, critical, seen 3x): `.claude/learnings/L-003.md`
-2. **[L-002] Database mutations in src/api/ handlers must be wrapped in transactions** (pattern-violation, important, seen 1x): `.claude/learnings/L-002.md`
+1. **[L-003] Auth middleware ordering dependency: if auth runs after rate limiting, unauthenticated requests consume quota** (architecture, critical, seen 3x): `/Users/me/.claude/projects/-Users-me-app/learnings/L-003.md`
+2. **[L-002] Database mutations in src/api/ handlers must be wrapped in transactions** (pattern-violation, important, seen 1x): `/Users/me/.claude/projects/-Users-me-app/learnings/L-002.md`
 ```
 
 Each entry is one line: `[ID] Title` (category, severity, seen Nx) and the learning file's path, relative to the project root (absolute when the learnings directory is outside it). The title is written as the rule, so it is enough to recognise the pattern; the reviewer opens the file for the detail. The full `## Finding` text is not injected: ten of them made up 13–16 KB of every prompt, repeated on every reviewer turn.
@@ -66,4 +66,4 @@ Each entry is one line: `[ID] Title` (category, severity, seen Nx) and the learn
 
 - **Promoted learnings are skipped** — they are already in CLAUDE.md and will be seen by reviewers through that channel.
 - **The staleness check runs on every injection attempt**, even if the learning doesn't match the current targets. This ensures learnings whose scope no longer exists in the repo are eventually expired regardless of what files are being reviewed.
-- **Do not modify learning files during injection** except for the `_staleness_count` update (and `status: expired` when threshold hit). Content changes happen only during extraction (Phase 4.7).
+- **Do not modify learning files during injection.** Only `prepare_round.py` writes `_staleness_count` (and `status: expired` when the threshold is hit), under the store lock; by-hand injection never writes. Content changes happen only during extraction (Phase 4.7), through `scripts/learnings.py`.

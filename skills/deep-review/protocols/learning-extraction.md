@@ -44,9 +44,11 @@ For each qualifying finding, extract:
 
 ### Step 2: Load Existing Learnings
 
-If `.claude/learnings/` exists, read all `L-*.md` files. Parse frontmatter from each. Filter to `status: active` only (promoted and expired are not candidates for recurrence matching).
+Run `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py list --status active --json`. It prints every active learning in the project's shared store as `{"id", "path", "fields", "body"}`; promoted and expired learnings are not candidates for recurrence matching.
 
-If `.claude/learnings/` does not exist, treat as empty set (all candidates will be `new`).
+`[]` means the store has no learnings yet, or that the main checkout hasn't been migrated (a warning on stderr says so). Either way, every candidate is `new`.
+
+**The store.** Every checkout of a project (the main checkout and each worktree) shares one store at `~/.claude/projects/<main-checkout slug>/learnings/`; `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py paths` prints it, the main checkout's `CLAUDE.md` and whether this session is in a worktree. Each checkout's `.claude/learnings` is a symlink to it (the script re-links a stale worktree copy). Never read, scan or write learning files directly: IDs are only collision-free when the script assigns them under its lock.
 
 ### Step 3: Recurrence Detection
 
@@ -93,7 +95,7 @@ description: |
   Finding: [finding summary]
 options:
   - label: "Save"
-    description: "Save this learning to .claude/learnings/"
+    description: "Save this learning to the project's learnings store"
   - label: "Edit Scope"
     description: "Save with modified scope (you'll be asked for the scope)"
   - label: "Skip"
@@ -158,31 +160,28 @@ No human gate. Log each action.
 
 ### Step 6: Persist
 
-For each accepted learning:
+Every write goes through `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py`. Write the text you drafted to a file in the round directory first; the script reads it from there. Exit code 2 means the script refused and wrote nothing (the message says why); exit code 3 means the store lock timed out. Neither fails the review (see Error Handling).
 
 **New learnings:**
-1. Determine next ID: scan `.claude/learnings/L-*.md`, find highest NNN, increment by 1
-2. Create `.claude/learnings/` directory if it doesn't exist
-3. Write `L-<NNN>.md` with full frontmatter (per [references/learning-schema.md](${CLAUDE_SKILL_DIR}/references/learning-schema.md)) and body sections
-4. Set `occurrences: 1`, `first_seen` and `last_seen` to today, `status: active`
+1. Write `<round dir>/_learning-draft-<n>.md`: frontmatter with `title`, `category`, `severity`, `scope`, `tags` and `source` (per [references/learning-schema.md](${CLAUDE_SKILL_DIR}/references/learning-schema.md)), then the `## Finding`, `## Context` and `## Mitigation` body sections. Leave out `id`, `occurrences`, `first_seen`, `last_seen`, `status`, `promoted_to` and `_staleness_count`: the script sets them.
+2. Run `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py new --draft <round dir>/_learning-draft-<n>.md`. It prints the assigned ID.
 
 **Recurrences:**
-1. Read the existing learning file
-2. Increment `occurrences`
-3. Update `last_seen` to today
-4. If the new finding's files are outside existing scope: merge the new scope glob into the `scope` list
-5. Write updated file
+1. Write `<round dir>/_learning-draft-<n>.md` with the new finding's text only (no frontmatter).
+2. Run `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py recur <id> --draft <that file> --round-dir <round dir> [--scope <glob> ...]`, passing `--scope` for each new glob the finding's files need. The script appends a `## Recurrence — <date> (<round dir>)` section, increments `occurrences`, updates `last_seen` and merges the globs.
 
 **Promotions:**
-1. Append the rule to CLAUDE.md with a comment: `# From learning L-<NNN>`
-2. Update the learning file: set `status: promoted`, set `promoted_to` to reference the CLAUDE.md entry
-3. Increment `occurrences` and update `last_seen`
+1. Run `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py paths` and read the file at `main_claude_md` (the main checkout's `CLAUDE.md`, even from a worktree). Record its SHA-256 (`shasum -a 256 <file>`).
+2. Write the complete revised file to `<round dir>/_claude-md-revised.md`: either a new section, or a rewrite of the section that already covers this pattern. Show the user the diff against the file you read at the promotion gate.
+3. Run `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py promote <id> --claude-md <round dir>/_claude-md-revised.md --expect-sha <sha> --heading "<section heading>"`. If it refuses because `CLAUDE.md` changed since you read it, re-read the file, redo the edit and run it again.
+4. **In the main checkout**, the script writes `CLAUDE.md` and marks the learning `promoted` in one locked step. **In a worktree** it can't write the main checkout's `.claude/`: it queues the promotion in the store, applies the rule to this worktree's own `CLAUDE.md` (when that copy matched the main one), sets `promotion_pending` and leaves the learning `active` until the rule lands. Tell the user the promotion is queued.
 
-**Update LEARNINGS.md index:**
-Create or update `.claude/learnings/LEARNINGS.md` per the format in [references/learning-schema.md](${CLAUDE_SKILL_DIR}/references/learning-schema.md). Regenerate the full table from all learning files (newest `last_seen` first).
+**Applying queued promotions (main checkout only).** When `prepare_round.py` warns about pending promotions, or the user asks, run `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py apply-promotions --dry-run`, show the user the diff it prints, and ask before applying. On a yes, run `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py apply-promotions --expect-sha <the expect-sha line from the dry run>`. A promotion whose lines conflict with later edits stays pending: redo it with `promote` from the main checkout.
+
+**Index:** `LEARNINGS.md` is rebuilt by every command that writes; never edit it.
 
 ## Error Handling
 
-- **Never fail the review over a learnings issue.** If `.claude/learnings/` cannot be created, if a learning file can't be written, or if any step in this phase errors: warn with a log message and continue to Phase 5 (or exit if `--verdict-only`).
+- **Never fail the review over a learnings issue.** If `learnings.py` exits 2 (refused) or 3 (store lock timed out), or any step in this phase errors: warn with a log message and continue to Phase 5 (or exit if `--verdict-only`).
 - **Partial persistence is acceptable.** If 3 of 5 candidates are saved before an error, keep the 3 and warn about the remaining 2.
-- **Malformed existing learning files:** If a learning file in `.claude/learnings/` can't be parsed, skip it for recurrence matching but don't delete it. Log a warning.
+- **Malformed existing learning files:** `learnings.py list` skips a file it can't parse and warns on stderr; `recur` and `promote` refuse it. Don't delete it; report it to the user.

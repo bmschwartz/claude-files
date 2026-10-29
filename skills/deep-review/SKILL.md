@@ -360,7 +360,7 @@ Read the full deliberation protocol at [protocols/deliberation.md](${CLAUDE_SKIL
 
 **Contract:**
 - **Receives:** `REVIEW_SUMMARY.md` with verdict block
-- **Produces:** Learning files in `.claude/learnings/` (interactive mode) or `learning_candidates` in verdict block (`--verdict-only` mode)
+- **Produces:** Learnings in the project's shared learnings store, written only through `scripts/learnings.py` (interactive mode) or `learning_candidates` in verdict block (`--verdict-only` mode)
 - **Invariants:** Never fails the review. Existing learnings never deleted (only updated or expired).
 
 **Skip if:** `--no-learn` or `--quick`.
@@ -369,12 +369,12 @@ Read the full extraction protocol at [protocols/learning-extraction.md](${CLAUDE
 
 **Summary:**
 1. Parse findings from REVIEW_SUMMARY.md (severity >= IMPORTANT, agreement >= Moderate)
-2. Load existing learnings from `.claude/learnings/`
+2. Load existing learnings: `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py list --status active --json`
 3. Match candidates against existing learnings (LLM-assisted recurrence detection)
 4. **Interactive mode** (no `--verdict-only`, no `--auto-learn`): present candidates via human gate — Save | Skip | Edit scope. For 3+ occurrence promotions, offer CLAUDE.md rule promotion.
 5. **`--verdict-only` mode:** Embed candidates in verdict block as `learning_candidates` field. Do not write learning files — the calling skill handles persistence.
 6. **`--auto-learn` mode:** Auto-accept all candidates, auto-promote promotions.
-7. Persist accepted learnings: write/update learning files, update `.claude/learnings/LEARNINGS.md` index.
+7. Persist accepted learnings with `learnings.py new` / `recur` / `promote`; the script assigns IDs, takes the store lock and rebuilds the `LEARNINGS.md` index. Never edit learning files by hand.
 
 ---
 
