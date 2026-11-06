@@ -79,7 +79,18 @@ For `recurrence` candidates, check if the new finding's files fall outside the e
 
 ### Step 5: Route by Mode
 
-#### Interactive mode (no `--verdict-only`, no `--auto-learn`)
+#### Default mode (auto-learn)
+
+Applies when neither `--verdict-only` nor `--review-learnings` is set. `--auto-learn` is still accepted and changes nothing.
+
+Auto-accept all candidates:
+- `new` → write learning file
+- `recurrence` → update existing learning file
+- `promotion` → promote to CLAUDE.md and update learning file
+
+No human gate. Log each action.
+
+#### `--review-learnings` mode (no `--verdict-only`)
 
 Present each candidate to the user via `AskQuestion` (Cursor) or `AskUserQuestion` (Claude Code):
 
@@ -145,18 +156,11 @@ options:
 
 #### `--verdict-only` mode
 
+Takes precedence over the default and `--review-learnings`.
+
 Do **NOT** write any learning files. Instead, embed all candidates in the verdict block as the `learning_candidates` field (see [references/verdict-schema.md](${CLAUDE_SKILL_DIR}/references/verdict-schema.md)).
 
 The calling skill (e.g., `/feature`) is responsible for presenting the human gate and persisting accepted learnings. This keeps `/deep-review`'s contract clean: extract candidates, let the caller decide when and how to gate them.
-
-#### `--auto-learn` mode
-
-Auto-accept all candidates:
-- `new` → write learning file
-- `recurrence` → update existing learning file
-- `promotion` → promote to CLAUDE.md and update learning file
-
-No human gate. Log each action.
 
 ### Step 6: Persist
 
@@ -172,7 +176,7 @@ Every write goes through `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py`. Wri
 
 **Promotions:**
 1. Run `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py paths` and read the file at `main_claude_md` (the main checkout's `CLAUDE.md`, even from a worktree). Record its SHA-256 (`shasum -a 256 <file>`).
-2. Write the complete revised file to `<round dir>/_claude-md-revised.md`: either a new section, or a rewrite of the section that already covers this pattern. Show the user the diff against the file you read at the promotion gate.
+2. Write the complete revised file to `<round dir>/_claude-md-revised.md`: either a new section, or a rewrite of the section that already covers this pattern. Show the user the diff against the file you read: at the promotion gate with `--review-learnings`, or in the action log by default.
 3. Run `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py promote <id> --claude-md <round dir>/_claude-md-revised.md --expect-sha <sha> --heading "<section heading>"`. If it refuses because `CLAUDE.md` changed since you read it, re-read the file, redo the edit and run it again.
 4. **In the main checkout**, the script writes `CLAUDE.md` and marks the learning `promoted` in one locked step. **In a worktree** it can't write the main checkout's `.claude/`: it queues the promotion in the store, applies the rule to this worktree's own `CLAUDE.md` (when that copy matched the main one), sets `promotion_pending` and leaves the learning `active` until the rule lands. Tell the user the promotion is queued.
 

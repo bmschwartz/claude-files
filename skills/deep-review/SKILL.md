@@ -2,7 +2,7 @@
 name: deep-review
 description: Deep multi-model review pipeline with deliberation, structured verdicts, and learning extraction (invoke as /deep-review — not Cursor's built-in /review). Unified code and plan review with built-in reviewers, optional multi-model analysis via Task subagents (Cursor) or agent CLI (Claude Code), file-relay deliberation, and structured verdicts. Extracts durable review learnings and injects them into future reviews. Use when the user wants a code review, says "review my code", "check my changes", wants to validate a spec/plan, or when invoked by /feature during design or verification phases.
 disable-model-invocation: true
-argument-hint: "[--type code|plan|spec] [--quick] [--external] [--changed-only] [--focus <area>] [--verdict-only] [--no-learn] [--auto-learn] [--pr <number>] [files...]"
+argument-hint: "[--type code|plan|spec] [--quick] [--external] [--changed-only] [--focus <area>] [--verdict-only] [--no-learn] [--review-learnings] [--pr <number>] [files...]"
 model: opus
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(git diff*, git log*, git branch*, git rev-parse*, git show*, git merge-base*, gh pr*, mkdir *, date *, which *, python3 */scripts/run_reviewers.py*, python3 */scripts/prepare_round.py*)
 ---
@@ -83,7 +83,8 @@ A unified deep-review skill that orchestrates parallel AI reviewers, synthesizes
 | `--verdict-only` | Produce REVIEW_SUMMARY.md + verdict, skip post-synthesis interaction |
 | `--no-deliberation` | Skip deliberation even if conflicts detected |
 | `--no-learn` | Skip learning extraction (Phase 4.7) entirely |
-| `--auto-learn` | Auto-accept learning candidates without human gate |
+| `--review-learnings` | Ask before saving each learning candidate or promoting one to CLAUDE.md (by default all are saved without asking) |
+| `--auto-learn` | No effect: auto-accepting learnings is the default. Still accepted so existing invocations keep working |
 
 **Default external models:** `composer-2.5`, `gpt-5.6-sol-high`
 
@@ -360,7 +361,7 @@ Read the full deliberation protocol at [protocols/deliberation.md](${CLAUDE_SKIL
 
 **Contract:**
 - **Receives:** `REVIEW_SUMMARY.md` with verdict block
-- **Produces:** Learnings in the project's shared learnings store, written only through `scripts/learnings.py` (interactive mode) or `learning_candidates` in verdict block (`--verdict-only` mode)
+- **Produces:** Learnings in the project's shared learnings store, written only through `scripts/learnings.py` (default and `--review-learnings` modes) or `learning_candidates` in verdict block (`--verdict-only` mode)
 - **Invariants:** Never fails the review. Existing learnings never deleted (only updated or expired).
 
 **Skip if:** `--no-learn` or `--quick`.
@@ -371,9 +372,9 @@ Read the full extraction protocol at [protocols/learning-extraction.md](${CLAUDE
 1. Parse findings from REVIEW_SUMMARY.md (severity >= IMPORTANT, agreement >= Moderate)
 2. Load existing learnings: `python3 ${CLAUDE_SKILL_DIR}/scripts/learnings.py list --status active --json`
 3. Match candidates against existing learnings (LLM-assisted recurrence detection)
-4. **Interactive mode** (no `--verdict-only`, no `--auto-learn`): present candidates via human gate — Save | Skip | Edit scope. For 3+ occurrence promotions, offer CLAUDE.md rule promotion.
-5. **`--verdict-only` mode:** Embed candidates in verdict block as `learning_candidates` field. Do not write learning files — the calling skill handles persistence.
-6. **`--auto-learn` mode:** Auto-accept all candidates, auto-promote promotions.
+4. **Default (auto-learn):** Auto-accept all candidates, auto-promote promotions. No human gate; log each action.
+5. **`--review-learnings` mode:** present candidates via human gate — Save | Skip | Edit scope. For 3+ occurrence promotions, offer CLAUDE.md rule promotion.
+6. **`--verdict-only` mode** (takes precedence over both): Embed candidates in verdict block as `learning_candidates` field. Do not write learning files — the calling skill handles persistence.
 7. Persist accepted learnings with `learnings.py new` / `recur` / `promote`; the script assigns IDs, takes the store lock and rebuilds the `LEARNINGS.md` index. Never edit learning files by hand.
 
 ---
